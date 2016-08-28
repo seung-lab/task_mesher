@@ -7,14 +7,21 @@
 #include <zi/mesh/int_mesh.hpp>
 #include <zi/mesh/quadratic_simplifier.hpp>
 
+#include <fstream>
 #include <queue>
 
 /*****************************************************************/
+template<typename T>
+const char * CTaskMesher<T>::empty_mesh = "";
 
 template<typename T>
 CTaskMesher<T>::CTaskMesher(const std::string & url, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
 meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.end())
 {
+    for (int i = 0; i < 5; ++i) {
+      meshData_[i] = NULL;
+    }
+
     if (segments_.empty()) { // Shortcut for empty tasks
         meshed_ = true;
         return;
@@ -52,8 +59,17 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
     }*/
 
     volume_ = reinterpret_cast<T*>(&buffer_[0]);
+
+
+    // 3. Mask and Merge Segments
+    selectSegments(false);
+
+    /*if (printDebug) {
+      std::cout << "Masked segmentation data in " << t.elapsed<double>() << " s.\n";
+      t.reset();
+    }*/
     
-    // 3. Run Marching Cubes
+    // 4. Run Marching Cubes
     zi::mesh::marching_cubes<T> mc;
     mc.marche(volume_, dim_[2], dim_[1], dim_[0]);
 
@@ -62,8 +78,9 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         t.reset();
     }*/
 
-    // 4. Mesh Cleanup and Simplification
+    // 5. Mesh Cleanup and Simplification
     if (mc.count(1) > 0) {
+        std::vector<float> strip;
         zi::mesh::int_mesh im;
         im.add(mc.get_triangles(1));
 
@@ -71,7 +88,12 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         im.fill_simplifier<double>(s);
 
         s.prepare();
-        meshes_[0] = CreateDegTriStrip(s);
+        //WriteDegTriStrip(s, "raw.bin");
+        strip = CreateDegTriStrip(s);
+        meshLength_[0] = strip.size() * sizeof(float);
+        meshData_[0] = new char[meshLength_[0]];
+        memcpy(meshData_[0], reinterpret_cast<const char*>(&strip[0]), meshLength_[0]);
+
         /*if (printDebug) {
             std::cout << "Quadrics and Normal calculation done in " << t.elapsed<double>() << " s.\n";
             WriteObj(s, std::to_string(taskID)+"_raw.obj");
@@ -79,7 +101,11 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         }*/
 
         s.optimize(s.face_count() / 10, 1e-12);
-        meshes_[1] = CreateDegTriStrip(s);
+        //WriteDegTriStrip(s, "0.bin");
+        strip = CreateDegTriStrip(s);
+        meshLength_[1] = strip.size() * sizeof(float);
+        meshData_[1] = new char[meshLength_[1]];
+        memcpy(meshData_[1], reinterpret_cast<const char*>(&strip[0]), meshLength_[1]);
         /*if (printDebug) {
             std::cout << "Simplification 0 completed in " << t.elapsed<double>() << " s.\n";
             WriteObj(s, "test_0.obj");
@@ -88,7 +114,11 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
 
         for (int mip = 1; mip <= 3; ++mip) {
             s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
-            meshes_[1 + mip] = CreateDegTriStrip(s);
+            strip = CreateDegTriStrip(s);
+            meshLength_[1 + mip] = strip.size() * sizeof(float);
+            meshData_[1 + mip] = new char[meshLength_[1 + mip]];
+            memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
+            //WriteDegTriStrip(s, std::to_string(mip)+".bin");
             //WriteDegTriStrip(s, "test_" + std::to_string(mip) + ".strip");
             //WriteTriMesh(s, "test_" + std::to_string(mip) + ".mesh");
             /*if (printDebug) {
@@ -110,6 +140,10 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
 template<typename T>
 CTaskMesher<T>::~CTaskMesher()
 {
+  for (int i = 0; i < 5; ++i) {
+    delete[] meshData_[i];
+    meshData_[i] = NULL;
+  }
 }
 
 /*****************************************************************/
@@ -219,9 +253,19 @@ void CTaskMesher<T>::selectSegments(bool fillHoles) {
 }
 
 template<typename T>
-const std::vector<float> & CTaskMesher<T>::GetMesh(uint8_t lod) const
+bool CTaskMesher<T>::GetMesh(uint8_t lod, const char ** data, size_t * length) const
 {
-  return meshes_[lod];
+  if (lod < 5) {
+    if (meshData_[lod]) {
+      *length = meshLength_[lod];
+      *data   = meshData_[lod];
+    } else {
+      *length = 0;
+      *data = empty_mesh;
+    }
+    return true;
+  }
+  return false;
 }
 
 
@@ -268,62 +312,46 @@ extern "C" void TaskMesher_Release_uint64(TMesher * taskmesher) {
 
 /*****************************************************************/
 
-extern "C" void TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, char ** data, size_t * length)
+extern "C" void TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint8_t>*)(taskmesher))->GetMesh(0);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint8_t>*)(taskmesher))->GetMesh(0, data, length);
 }
 
-extern "C" void TaskMesher_GetRawMesh_uint16(TMesher * taskmesher, char ** data, size_t * length)
+extern "C" void TaskMesher_GetRawMesh_uint16(TMesher * taskmesher, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint16_t>*)(taskmesher))->GetMesh(0);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint16_t>*)(taskmesher))->GetMesh(0, data, length);
 }
 
-extern "C" void TaskMesher_GetRawMesh_uint32(TMesher * taskmesher, char ** data, size_t * length)
+extern "C" void TaskMesher_GetRawMesh_uint32(TMesher * taskmesher, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint32_t>*)(taskmesher))->GetMesh(0);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint32_t>*)(taskmesher))->GetMesh(0, data, length);
 }
 
-extern "C" void TaskMesher_GetRawMesh_uint64(TMesher * taskmesher, char ** data, size_t * length)
+extern "C" void TaskMesher_GetRawMesh_uint64(TMesher * taskmesher, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint64_t>*)(taskmesher))->GetMesh(0);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint64_t>*)(taskmesher))->GetMesh(0, data, length);
 }
 
 /*****************************************************************/
 
-extern "C" void TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length)
+extern "C" void TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint8_t>*)(taskmesher))->GetMesh(1 + lod);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint8_t>*)(taskmesher))->GetMesh(1 + lod, data, length);
 }
 
-extern "C" void TaskMesher_GetSimplifiedMesh_uint16(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length)
+extern "C" void TaskMesher_GetSimplifiedMesh_uint16(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint16_t>*)(taskmesher))->GetMesh(1 + lod);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint16_t>*)(taskmesher))->GetMesh(1 + lod, data, length);
 }
 
-extern "C" void TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length)
+extern "C" void TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint32_t>*)(taskmesher))->GetMesh(1 + lod);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint32_t>*)(taskmesher))->GetMesh(1 + lod, data, length);
 }
 
-extern "C" void TaskMesher_GetSimplifiedMesh_uint64(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length)
+extern "C" void TaskMesher_GetSimplifiedMesh_uint64(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length)
 {
-  std::vector<float> mesh = ((CTaskMesher<uint64_t>*)(taskmesher))->GetMesh(1 + lod);
-  *data = reinterpret_cast<char*>(&mesh[0]);
-  *length = mesh.size() * sizeof(float);
+  ((CTaskMesher<uint64_t>*)(taskmesher))->GetMesh(1 + lod, data, length);
 }
 
 /*****************************************************************/

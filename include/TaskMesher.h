@@ -17,7 +17,10 @@ private:
   const zi::vl::vec<size_t, 3>      dim_;
   std::set<T>                       segments_;
 
-  std::array<std::vector<float>, 5> meshes_;
+
+  size_t                            meshLength_[5];
+  char                            * meshData_[5];
+  //std::array<std::vector<float>, 5> meshes_;
 
 
   inline void idxToXYZ(size_t idx, size_t &x, size_t &y, size_t &z) const;
@@ -28,7 +31,8 @@ private:
 
 
 public:
-  const std::vector<float> & GetMesh(uint8_t lod) const;
+  static const char * empty_mesh;
+  bool GetMesh(uint8_t lod, const char ** data, size_t * length) const;
 
   CTaskMesher(const std::string & url, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments);
   ~CTaskMesher();
@@ -48,14 +52,14 @@ extern "C" {
   void      TaskMesher_Release_uint16(TMesher * taskmesher);
   void      TaskMesher_Release_uint32(TMesher * taskmesher);
   void      TaskMesher_Release_uint64(TMesher * taskmesher);
-  void      TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, char ** data, size_t * length);
-  void      TaskMesher_GetRawMesh_uint16(TMesher * taskmesher, char ** data, size_t * length);
-  void      TaskMesher_GetRawMesh_uint32(TMesher * taskmesher, char ** data, size_t * length);
-  void      TaskMesher_GetRawMesh_uint64(TMesher * taskmesher, char ** data, size_t * length);
-  void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
-  void      TaskMesher_GetSimplifiedMesh_uint16(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
-  void      TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
-  void      TaskMesher_GetSimplifiedMesh_uint64(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
+  void      TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, const char ** data, size_t * length);
+  void      TaskMesher_GetRawMesh_uint16(TMesher * taskmesher, const char ** data, size_t * length);
+  void      TaskMesher_GetRawMesh_uint32(TMesher * taskmesher, const char ** data, size_t * length);
+  void      TaskMesher_GetRawMesh_uint64(TMesher * taskmesher, const char ** data, size_t * length);
+  void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
+  void      TaskMesher_GetSimplifiedMesh_uint16(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
+  void      TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
+  void      TaskMesher_GetSimplifiedMesh_uint64(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
 #ifdef __cplusplus
 } // extern "C"
 #endif
