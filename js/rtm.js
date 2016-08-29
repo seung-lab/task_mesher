@@ -50,6 +50,37 @@ var TaskMesherLib = ffi.Library('../lib/librtm', {
   "TaskMesher_GetSimplifiedMesh_uint64": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
+var typeLookup = {
+    uint8: {
+        constructor: Uint8Array,
+        generate: TaskMesherLib.TaskMesher_Generate_uint8,
+        release: TaskMesherLib.TaskMesher_Release_uint8,
+        getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint8,
+        getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint8
+    },
+    uint16: {
+        constructor: Uint16Array,
+        generate: TaskMesherLib.TaskMesher_Generate_uint16,
+        release: TaskMesherLib.TaskMesher_Release_uint16,
+        getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint16,
+        getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint16
+    },
+    uint32: {
+        constructor: Uint32Array,
+        generate: TaskMesherLib.TaskMesher_Generate_uint32,
+        release: TaskMesherLib.TaskMesher_Release_uint32,
+        getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint32,
+        getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint32
+    },
+    uint64: {
+        constructor: Uint64Array,
+        generate: TaskMesherLib.TaskMesher_Generate_uint64,
+        release: TaskMesherLib.TaskMesher_Release_uint64,
+        getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint64,
+        getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint64
+    }
+};
+
 app.get('/cell/:cellId/task/:taskId', function(req, res) {
     var lod = req.query.lod || 1;
     console.log("Get LOD " + lod + " for task " + req.params.taskId + "\n");
@@ -82,16 +113,20 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
 
     switch (req.body.type) {
         case "uint8":
-            var segments = new Uint8Array(req.body.segments);
+        case "uint16":
+        case "uint32":
+        case "uint64":
+            var intType = typeLookup[req.body.type];
+            var segments = new intType.constructor(req.body.segments);
             var seg = Buffer.from(segments.buffer);
-            seg.type = ref.types.uint8;
+            seg.type = ref.types[intType];
 
-            var mesher = TaskMesherLib.TaskMesher_Generate_uint8(segmentation_url, dimensions, segments.length, seg);
+            var mesher = intType.generate(segmentation_url, dimensions, segments.length, seg);
 
             for (var lod = 0; lod < 4; ++lod) {
                 var lengthPtr = ref.alloc(ref.types.size_t);
                 var dataPtr = ref.alloc(CharPtr);
-                TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint8(mesher, lod, dataPtr, lengthPtr);
+                intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);
                 var len = lengthPtr.deref();
                 var data = ref.reinterpret(dataPtr.deref(), len);
 
@@ -110,103 +145,10 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
                
             }
 
-            TaskMesherLib.TaskMesher_Release_uint8(mesher);
+            intType.release(mesher);
 
             break;
-
-        case "uint16":
-            var segments = new Uint16Array(req.body.segments);
-            var seg = Buffer.from(segments.buffer);
-            seg.type = ref.types.uint16;
-            var mesher = TaskMesherLib.TaskMesher_Generate_uint16(segmentation_url, dimensions, segments.length, seg);
-
-            for (var lod = 0; lod < 4; ++lod) {
-                var lengthPtr = ref.alloc(ref.types.size_t);
-                var dataPtr = ref.alloc(CharPtr);
-                TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint16(mesher, lod, dataPtr, lengthPtr);
-                var len = lengthPtr.deref();
-                var data = ref.reinterpret(dataPtr.deref(), len); 
-
-                var buf = new Buffer(data.length);
-                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
-                    }
-                });
-            }
-
-            TaskMesherLib.TaskMesher_Release_uint16(mesher);
-
-            break;
-
-        case "uint32":
-            var segments = new Uint32Array(req.body.segments);
-            var seg = Buffer.from(segments.buffer);
-            seg.type = ref.types.uint32;
-            var mesher = TaskMesherLib.TaskMesher_Generate_uint32(segmentation_url, dimensions, segments.length, seg);
-
-            for (var lod = 0; lod < 4; ++lod) {
-                var lengthPtr = ref.alloc(ref.types.size_t);
-                var dataPtr = ref.alloc(CharPtr);
-                TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint32(mesher, lod, dataPtr, lengthPtr);
-                var len = lengthPtr.deref();
-                var data = ref.reinterpret(dataPtr.deref(), len);
-
-                var buf = new Buffer(data.length);
-                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
-                    }
-                });
-            }
-
-            TaskMesherLib.TaskMesher_Release_uint32(mesher);
-
-            break;
-
-        case "uint64":
-            var segments = new Uint64Array(req.body.segments);
-            var seg = Buffer.from(segments.buffer);
-            seg.type = ref.types.uint64;
-            var mesher = TaskMesherLib.TaskMesher_Generate_uint64(segmentation_url, dimensions, segments.length, seg);
-
-            for (var lod = 0; lod < 4; ++lod) {
-                var lengthPtr = ref.alloc(ref.types.size_t);
-                var dataPtr = ref.alloc(CharPtr);
-                TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint64(mesher, lod, dataPtr, lengthPtr);
-                var len = lengthPtr.deref();
-                var data = ref.reinterpret(dataPtr.deref(), len);
-
-                var buf = new Buffer(data.length);
-                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
-                    }
-                });
-            }
-
-            TaskMesherLib.TaskMesher_Release_uint64(mesher);
-
-            break;
-    }
+   }
     console.timeEnd("Remeshing task " + req.params.taskId);
     res.sendStatus(204);
 });
