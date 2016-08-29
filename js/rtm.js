@@ -98,11 +98,16 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
                 var buf = new Buffer(data.length);
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId);
-                var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                wstream.on('error', function(e) { console.error(e); });
-                wstream.write(buf);
-                wstream.end();
+                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
+                    if (err) { console.error(err); }
+                    else {
+                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
+                        wstream.on('error', function(e) { console.error(e); });
+                        wstream.write(buf);
+                        wstream.end();
+                    }
+                });
+               
             }
 
             TaskMesherLib.TaskMesher_Release_uint8(mesher);
@@ -125,11 +130,15 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
                 var buf = new Buffer(data.length);
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId);
-                var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                wstream.on('error', function(e) { console.error(e); });
-                wstream.write(buf);
-                wstream.end();
+                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
+                    if (err) { console.error(err); }
+                    else {
+                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
+                        wstream.on('error', function(e) { console.error(e); });
+                        wstream.write(buf);
+                        wstream.end();
+                    }
+                });
             }
 
             TaskMesherLib.TaskMesher_Release_uint16(mesher);
@@ -152,11 +161,15 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
                 var buf = new Buffer(data.length);
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId);
-                var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                wstream.on('error', function(e) { console.error(e); });
-                wstream.write(buf);
-                wstream.end();
+                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
+                    if (err) { console.error(err); }
+                    else {
+                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
+                        wstream.on('error', function(e) { console.error(e); });
+                        wstream.write(buf);
+                        wstream.end();
+                    }
+                });
             }
 
             TaskMesherLib.TaskMesher_Release_uint32(mesher);
@@ -179,11 +192,15 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
                 var buf = new Buffer(data.length);
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId);
-                var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                wstream.on('error', function(e) { console.error(e); });
-                wstream.write(buf);
-                wstream.end();
+                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
+                    if (err) { console.error(err); }
+                    else {
+                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
+                        wstream.on('error', function(e) { console.error(e); });
+                        wstream.write(buf);
+                        wstream.end();
+                    }
+                });
             }
 
             TaskMesherLib.TaskMesher_Release_uint64(mesher);
