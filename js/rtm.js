@@ -50,10 +50,29 @@ var TaskMesherLib = ffi.Library('../lib/librtm', {
   "TaskMesher_GetSimplifiedMesh_uint64": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
+app.get('/cell/:cellId/task/:taskId', function(req, res) {
+    var lod = req.query.lod || 1;
+    console.log("Get LOD " + lod + " for task " + req.params.taskId + "\n");
+    console.time("Get LOD " + lod + " for task " + req.params.taskId);
+
+    var options = { root: __dirname }
+    res.sendFile("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", options, function (err) {
+        if (err) {
+            console.log(err);
+            res.status(err.status).end();
+        }
+        else {
+            console.timeEnd("Get LOD " + lod + " for task " + req.params.taskId);
+        }
+    });
+
+});
+
 app.post('/cell/:cellId/task/:taskId', function(req, res) {
     console.log("Remeshing task " + req.params.taskId + "\n");
     console.time("Remeshing task " + req.params.taskId);
-    var segmentation_url = req.body.segmentation_url; // "https://storage.googleapis.com/zebrafish_web_4x4x4/153742.segmentation.lzma"
+    var segmentation_url = "https://storage.googleapis.com/" + req.body.bucket + "/" + req.body.volumeId + ".segmentation.lzma"
+    //var segmentation_url = req.body.segmentation_url; // "https://storage.googleapis.com/zebrafish_web_4x4x4/153742.segmentation.lzma"
 
     var dimensions = new SizeTArray(3);
     console.log(req.body);
