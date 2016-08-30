@@ -1,23 +1,23 @@
 // Packages
 let app = module.exports = require('./mykoa.js')();
-var ref        = require('ref');
-var ffi        = require('ffi');
-var ArrayType  = require('ref-array');
-var fs         = require('fs');
-var mkdirp     = require('mkdirp');
+let ref        = require('ref');
+let ffi        = require('ffi');
+let ArrayType  = require('ref-array');
+let fs         = require('fs');
+let mkdirp     = require('mkdirp');
 let send = require('koa-send');
 
 // Typedefs
-var TaskMesherPtr = ref.refType(ref.types.void);
-var SizeTArray = ArrayType(ref.types.size_t);
-var UInt8Ptr = ref.refType(ref.types.uint8);
-var UInt16Ptr = ref.refType(ref.types.uint16);
-var UInt32Ptr = ref.refType(ref.types.uint32);
-var SizeTPtr = ref.refType(ref.types.size_t);
-var CharPtr = ref.refType(ref.types.char);
-var CharPtrPtr = ref.refType(ref.types.CString);
+let TaskMesherPtr = ref.refType(ref.types.void);
+let SizeTArray = ArrayType(ref.types.size_t);
+let UInt8Ptr = ref.refType(ref.types.uint8);
+let UInt16Ptr = ref.refType(ref.types.uint16);
+let UInt32Ptr = ref.refType(ref.types.uint32);
+let SizeTPtr = ref.refType(ref.types.size_t);
+let CharPtr = ref.refType(ref.types.char);
+let CharPtrPtr = ref.refType(ref.types.CString);
 
-var TaskMesherLib = ffi.Library('../lib/librtm', {
+let TaskMesherLib = ffi.Library('../lib/librtm', {
   // TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);  
   "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
   "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
@@ -39,7 +39,7 @@ var TaskMesherLib = ffi.Library('../lib/librtm', {
   "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
-var typeLookup = {
+let typeLookup = {
     uint8: {
         constructor: Uint8Array,
         generate: TaskMesherLib.TaskMesher_Generate_uint8,
@@ -63,16 +63,16 @@ var typeLookup = {
     }
 };
 
-app.post('/mesh', null, {
-    lod: { type: 'int', min: 0 },
-    cell_id: { type: 'int', min: 0},
-    task_id: { type: 'int', min: 0}
-}, function* (id) {
+app.post('/getmesh', null, {
+        lod: { type: 'int', min: 0 },
+        cell_id: { type: 'int', min: 0},
+        task_id: { type: 'int', min: 0}
+    }, function* () {
     let {lod, task_id, cell_id} = this.params;
     console.log("Get LOD " + lod + " for task " + task_id + "\n");
     console.time("Get LOD " + lod + " for task " + task_id);
 
-    var options = { root: __dirname };
+    let options = { root: __dirname };
 
     let path = yield send(this, `./meshes/${cell_id}/${task_id}/${lod}.dstrip`, options);
 
@@ -81,55 +81,76 @@ app.post('/mesh', null, {
     }
 });
 
-// app.post('/cell/:cellId/task/:taskId', function(req, res) {
-//     console.log("Remeshing task " + req.params.taskId + "\n");
-//     console.time("Remeshing task " + req.params.taskId);
-//     var segmentation_url = "https://storage.googleapis.com/" + req.body.bucket + "/" + req.body.volumeId + ".segmentation.lzma"
-//     //var segmentation_url = req.body.segmentation_url; // "https://storage.googleapis.com/zebrafish_web_4x4x4/153742.segmentation.lzma"
+app.post('/remesh', null, {
+        cell_id: { type: 'int', min: 0},
+        task_id: { type: 'int', min: 0},
+        volume_id: { type: 'int', min: 0},
+        type: { type: 'string'},
+        task_dim: {
+            type: 'object',
+            rule: {
+                x: { type: 'int', min: 0},
+                y: { type: 'int', min: 0},
+                z: { type: 'int', min: 0}
+            }
+        },
+        bucket: { type: 'string' },
+        segments: {
+            type: 'array',
+            itemType: 'int',
+            rule: { min: 0 }
+        }
+    }, function* () {
+        let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = this.params;
+    console.log("Remeshing task " + task_id);
+    console.time("Remeshing task " + task_id);
+    let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
 
-//     var dimensions = new SizeTArray(3);
-//     console.log(req.body);
-//     dimensions[0] = req.body.task_dim_x;
-//     dimensions[1] = req.body.task_dim_y;
-//     dimensions[2] = req.body.task_dim_z;
+    let dimensions = new SizeTArray(3);
+    dimensions[0] = task_dim.x;
+    dimensions[1] = task_dim.y;
+    dimensions[2] = task_dim.z; 
 
-//     switch (req.body.type) {
-//         case "uint8":
-//         case "uint16":
-//         case "uint32":
-//             var intType = typeLookup[req.body.type];
-//             var segments = new intType.constructor(req.body.segments);
-//             var seg = Buffer.from(segments.buffer);
-//             seg.type = ref.types[intType];
+    switch (type) {
+        case "uint8":
+        case "uint16":
+        case "uint32":
+            let intType = typeLookup[type];
+            let segmentsTA = new intType.constructor(segments);
+            let seg = Buffer.from(segmentsTA.buffer);
+            seg.type = ref.types[intType];
 
-//             var mesher = intType.generate(segmentation_url, dimensions, segments.length, seg);
+            intType.generate.async(segmentation_url, dimensions, segmentsTA.length, seg, function (err, mesher) {
+               for (let lod = 0; lod < 4; ++lod) {
+                    let lengthPtr = ref.alloc(ref.types.size_t);
+                    let dataPtr = ref.alloc(CharPtr);
+                    intType.getSimplifiedMesh.async(mesher, lod, dataPtr, lengthPtr, function (err) {
+                        if (err) console.log(err);
 
-//             for (var lod = 0; lod < 4; ++lod) {
-//                 var lengthPtr = ref.alloc(ref.types.size_t);
-//                 var dataPtr = ref.alloc(CharPtr);
-//                 intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);
-//                 var len = lengthPtr.deref();
-//                 var data = ref.reinterpret(dataPtr.deref(), len);
+                        let len = lengthPtr.deref();
+                        let data = ref.reinterpret(dataPtr.deref(), len);
 
-//                 var buf = new Buffer(data.length);
-//                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
+                        let buf = new Buffer(data.length);
+                        data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-//                 mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
-//                     if (err) { console.error(err); }
-//                     else {
-//                         var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-//                         wstream.on('error', function(e) { console.error(e); });
-//                         wstream.write(buf);
-//                         wstream.end();
-//                     }
-//                 });
-               
-//             }
+                        mkdirp(`./meshes/${cell_id}/${task_id}`, function (err) {
+                            if (err) { console.error(err); }
+                            else {
+                                let wstream = fs.createWriteStream(`./meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
+                                wstream.on('error', function(e) { console.error(e); });
+                                wstream.write(buf);
+                                wstream.end();
+                            }
+                        });
 
-//             intType.release(mesher);
+                    });
+                }
 
-//             break;
-//    }
-//     console.timeEnd("Remeshing task " + req.params.taskId);
-//     res.sendStatus(204);
-// });
+                intType.release(mesher);
+            });
+
+            break;
+   }
+    console.timeEnd("Remeshing task " + task_id);
+    this.body = `meshing ${task_id}`;
+});
