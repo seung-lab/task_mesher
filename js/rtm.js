@@ -4,14 +4,8 @@ var ref        = require('ref');
 var ffi        = require('ffi');
 var ArrayType  = require('ref-array');
 var fs         = require('fs');
-var bodyParser = require('body-parser');
 var mkdirp     = require('mkdirp');
 let send = require('koa-send');
-
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-
-//var router = express.Router();
 
 // Typedefs
 var TaskMesherPtr = ref.refType(ref.types.void);
@@ -69,12 +63,12 @@ var typeLookup = {
     }
 };
 
-app.get('/cell/:cellId/task/:taskId', null, {
+app.post('/mesh', null, {
     lod: { type: 'int', min: 0 },
     cell_id: { type: 'int', min: 0},
     task_id: { type: 'int', min: 0}
 }, function* (id) {
-    let {lod, task_id, _cell_id} = this.params;
+    let {lod, task_id, cell_id} = this.params;
     console.log("Get LOD " + lod + " for task " + task_id + "\n");
     console.time("Get LOD " + lod + " for task " + task_id);
 
