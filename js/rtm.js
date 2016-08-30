@@ -6,6 +6,7 @@ var ArrayType  = require('ref-array');
 var fs         = require('fs');
 var bodyParser = require('body-parser');
 var mkdirp     = require('mkdirp');
+let send = require('koa-send');
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
@@ -68,73 +69,73 @@ var typeLookup = {
     }
 };
 
-app.get('/cell/:cellId/task/:taskId', function(req, res) {
-    var lod = req.query.lod || 1;
-    console.log("Get LOD " + lod + " for task " + req.params.taskId + "\n");
-    console.time("Get LOD " + lod + " for task " + req.params.taskId);
+app.get('/cell/:cellId/task/:taskId', null, {
+    lod: { type: 'int', min: 0 },
+    cell_id: { type: 'int', min: 0},
+    task_id: { type: 'int', min: 0}
+}, function* (id) {
+    let {lod, task_id, _cell_id} = this.params;
+    console.log("Get LOD " + lod + " for task " + task_id + "\n");
+    console.time("Get LOD " + lod + " for task " + task_id);
 
-    var options = { root: __dirname }
-    res.sendFile("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", options, function (err) {
-        if (err) {
-            console.log(err);
-            res.status(err.status).end();
-        }
-        else {
-            console.timeEnd("Get LOD " + lod + " for task " + req.params.taskId);
-        }
-    });
+    var options = { root: __dirname };
 
+    let path = yield send(this, `./meshes/${cell_id}/${task_id}/${lod}.dstrip`, options);
+
+    if (!path) {
+
+    }
 });
 
-app.post('/cell/:cellId/task/:taskId', function(req, res) {
-    console.log("Remeshing task " + req.params.taskId + "\n");
-    console.time("Remeshing task " + req.params.taskId);
-    var segmentation_url = "https://storage.googleapis.com/" + req.body.bucket + "/" + req.body.volumeId + ".segmentation.lzma"
-    //var segmentation_url = req.body.segmentation_url; // "https://storage.googleapis.com/zebrafish_web_4x4x4/153742.segmentation.lzma"
+// app.post('/cell/:cellId/task/:taskId', function(req, res) {
+//     console.log("Remeshing task " + req.params.taskId + "\n");
+//     console.time("Remeshing task " + req.params.taskId);
+//     var segmentation_url = "https://storage.googleapis.com/" + req.body.bucket + "/" + req.body.volumeId + ".segmentation.lzma"
+//     //var segmentation_url = req.body.segmentation_url; // "https://storage.googleapis.com/zebrafish_web_4x4x4/153742.segmentation.lzma"
 
-    var dimensions = new SizeTArray(3);
-    console.log(req.body);
-    dimensions[0] = req.body.task_dim_x;
-    dimensions[1] = req.body.task_dim_y;
-    dimensions[2] = req.body.task_dim_z;
+//     var dimensions = new SizeTArray(3);
+//     console.log(req.body);
+//     dimensions[0] = req.body.task_dim_x;
+//     dimensions[1] = req.body.task_dim_y;
+//     dimensions[2] = req.body.task_dim_z;
 
-    switch (req.body.type) {
-        case "uint8":
-        case "uint16":
-        case "uint32":
-            var intType = typeLookup[req.body.type];
-            var segments = new intType.constructor(req.body.segments);
-            var seg = Buffer.from(segments.buffer);
-            seg.type = ref.types[intType];
+//     switch (req.body.type) {
+//         case "uint8":
+//         case "uint16":
+//         case "uint32":
+//             var intType = typeLookup[req.body.type];
+//             var segments = new intType.constructor(req.body.segments);
+//             var seg = Buffer.from(segments.buffer);
+//             seg.type = ref.types[intType];
 
-            var mesher = intType.generate(segmentation_url, dimensions, segments.length, seg);
+//             var mesher = intType.generate(segmentation_url, dimensions, segments.length, seg);
 
-            for (var lod = 0; lod < 4; ++lod) {
-                var lengthPtr = ref.alloc(ref.types.size_t);
-                var dataPtr = ref.alloc(CharPtr);
-                intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);
-                var len = lengthPtr.deref();
-                var data = ref.reinterpret(dataPtr.deref(), len);
+//             for (var lod = 0; lod < 4; ++lod) {
+//                 var lengthPtr = ref.alloc(ref.types.size_t);
+//                 var dataPtr = ref.alloc(CharPtr);
+//                 intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);
+//                 var len = lengthPtr.deref();
+//                 var data = ref.reinterpret(dataPtr.deref(), len);
 
-                var buf = new Buffer(data.length);
-                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
+//                 var buf = new Buffer(data.length);
+//                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
-                    }
-                });
+//                 mkdirp("./meshes/" + req.params.cellId + "/" + req.params.taskId, function (err) {
+//                     if (err) { console.error(err); }
+//                     else {
+//                         var wstream = fs.createWriteStream("./meshes/" + req.params.cellId + "/" + req.params.taskId + "/" + lod + ".dstrip", {defaultEncoding: 'binary'});
+//                         wstream.on('error', function(e) { console.error(e); });
+//                         wstream.write(buf);
+//                         wstream.end();
+//                     }
+//                 });
                
-            }
+//             }
 
-            intType.release(mesher);
+//             intType.release(mesher);
 
-            break;
-   }
-    console.timeEnd("Remeshing task " + req.params.taskId);
-    res.sendStatus(204);
-});
+//             break;
+//    }
+//     console.timeEnd("Remeshing task " + req.params.taskId);
+//     res.sendStatus(204);
+// });

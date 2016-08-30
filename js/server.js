@@ -9,9 +9,7 @@ app.use(bodyParser());
 
 app.use(cors());
 
-
 app.mount(require('./rtm.js'));
-
 
 let port = Number(process.env.PORT);
 
