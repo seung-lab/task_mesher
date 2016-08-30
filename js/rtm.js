@@ -1,10 +1,9 @@
 // Packages
+let app = module.exports = require('./mykoa.js')();
 var ref        = require('ref');
 var ffi        = require('ffi');
 var ArrayType  = require('ref-array');
 var fs         = require('fs');
-var express    = require('express');
-var app        = express();
 var bodyParser = require('body-parser');
 var mkdirp     = require('mkdirp');
 
@@ -19,7 +18,6 @@ var SizeTArray = ArrayType(ref.types.size_t);
 var UInt8Ptr = ref.refType(ref.types.uint8);
 var UInt16Ptr = ref.refType(ref.types.uint16);
 var UInt32Ptr = ref.refType(ref.types.uint32);
-var UInt64Ptr = ref.refType(ref.types.uint64);
 var SizeTPtr = ref.refType(ref.types.size_t);
 var CharPtr = ref.refType(ref.types.char);
 var CharPtrPtr = ref.refType(ref.types.CString);
@@ -29,25 +27,21 @@ var TaskMesherLib = ffi.Library('../lib/librtm', {
   "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
   "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
   "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr ] ],
-  "TaskMesher_Generate_uint64": [ TaskMesherPtr, [ "string", SizeTArray, "uint64", UInt64Ptr ] ],
 
   // void      TaskMesher_Release_uint8(TMesher * taskmesher);
   "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
   "TaskMesher_Release_uint16": [ "void", [ TaskMesherPtr ] ],
   "TaskMesher_Release_uint32": [ "void", [ TaskMesherPtr ] ],
-  "TaskMesher_Release_uint64": [ "void", [ TaskMesherPtr ] ],
 
   // void      TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, char ** data, size_t * length);
   "TaskMesher_GetRawMesh_uint8": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
   "TaskMesher_GetRawMesh_uint16": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
   "TaskMesher_GetRawMesh_uint32": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetRawMesh_uint64": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
 
   //void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
   "TaskMesher_GetSimplifiedMesh_uint8": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
   "TaskMesher_GetSimplifiedMesh_uint16": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
   "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetSimplifiedMesh_uint64": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
 var typeLookup = {
@@ -71,13 +65,6 @@ var typeLookup = {
         release: TaskMesherLib.TaskMesher_Release_uint32,
         getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint32,
         getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint32
-    },
-    uint64: {
-        constructor: Uint64Array,
-        generate: TaskMesherLib.TaskMesher_Generate_uint64,
-        release: TaskMesherLib.TaskMesher_Release_uint64,
-        getRawMesh: TaskMesherLib.TaskMesher_GetRawMesh_uint64,
-        getSimplifiedMesh: TaskMesherLib.TaskMesher_GetSimplifiedMesh_uint64
     }
 };
 
@@ -115,7 +102,6 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
         case "uint8":
         case "uint16":
         case "uint32":
-        case "uint64":
             var intType = typeLookup[req.body.type];
             var segments = new intType.constructor(req.body.segments);
             var seg = Buffer.from(segments.buffer);
@@ -152,5 +138,3 @@ app.post('/cell/:cellId/task/:taskId', function(req, res) {
     console.timeEnd("Remeshing task " + req.params.taskId);
     res.sendStatus(204);
 });
-
-module.exports = app;
