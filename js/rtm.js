@@ -7,6 +7,8 @@ let fs         = require('fs');
 let mkdirp     = require('mkdirp');
 let send = require('koa-send');
 
+const WriteFolder = '/mnt/overview_meshes_bucket';
+
 // Typedefs
 let TaskMesherPtr = ref.refType(ref.types.void);
 let SizeTArray = ArrayType(ref.types.size_t);
@@ -63,24 +65,6 @@ let typeLookup = {
     }
 };
 
-app.post('/getmesh', null, {
-        lod: { type: 'int', min: 0 },
-        cell_id: { type: 'int', min: 0},
-        task_id: { type: 'int', min: 0}
-    }, function* () {
-    let {lod, task_id, cell_id} = this.params;
-    console.log("Get LOD " + lod + " for task " + task_id + "\n");
-    console.time("Get LOD " + lod + " for task " + task_id);
-
-    let options = { root: __dirname };
-
-    let path = yield send(this, `./meshes/${cell_id}/${task_id}/${lod}.dstrip`, options);
-
-    if (!path) {
-
-    }
-});
-
 app.post('/remesh', null, {
         cell_id: { type: 'int', min: 0},
         task_id: { type: 'int', min: 0},
@@ -121,29 +105,32 @@ app.post('/remesh', null, {
             seg.type = ref.types[intType];
 
             intType.generate.async(segmentation_url, dimensions, segmentsTA.length, seg, function (err, mesher) {
+		console.log('hi', mesher);
                for (let lod = 0; lod < 4; ++lod) {
                     let lengthPtr = ref.alloc(ref.types.size_t);
                     let dataPtr = ref.alloc(CharPtr);
-                    intType.getSimplifiedMesh.async(mesher, lod, dataPtr, lengthPtr, function (err) {
-                        if (err) console.log(err);
+                    intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) {
+			console.log(dataPtr);
+//                        if (err) console.log(err);
 
                         let len = lengthPtr.deref();
                         let data = ref.reinterpret(dataPtr.deref(), len);
 
                         let buf = new Buffer(data.length);
+			console.log('length', len, data.length);
                         data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                        mkdirp(`./meshes/${cell_id}/${task_id}`, function (err) {
+                        mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
                             if (err) { console.error(err); }
                             else {
-                                let wstream = fs.createWriteStream(`./meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
+                                let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
                                 wstream.on('error', function(e) { console.error(e); });
                                 wstream.write(buf);
                                 wstream.end();
                             }
                         });
 
-                    });
+                    //});
                 }
 
                 intType.release(mesher);
