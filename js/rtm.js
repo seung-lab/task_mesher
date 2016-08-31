@@ -69,7 +69,7 @@ app.post('/remesh', null, {
         cell_id: { type: 'int', min: 0},
         task_id: { type: 'int', min: 0},
         volume_id: { type: 'int', min: 0},
-        type: { type: 'string'},
+        type: ['uint8', 'uint16', 'uint32'],
         task_dim: {
             type: 'object',
             rule: {
