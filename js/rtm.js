@@ -20,25 +20,25 @@ let CharPtr = ref.refType(ref.types.char);
 let CharPtrPtr = ref.refType(ref.types.CString);
 
 let TaskMesherLib = ffi.Library('../lib/librtm', {
-  // TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);  
-  "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
-  "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
-  "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr ] ],
+    // TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);  
+    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
+    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
+    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr ] ],
 
-  // void      TaskMesher_Release_uint8(TMesher * taskmesher);
-  "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
-  "TaskMesher_Release_uint16": [ "void", [ TaskMesherPtr ] ],
-  "TaskMesher_Release_uint32": [ "void", [ TaskMesherPtr ] ],
+    // void      TaskMesher_Release_uint8(TMesher * taskmesher);
+    "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
+    "TaskMesher_Release_uint16": [ "void", [ TaskMesherPtr ] ],
+    "TaskMesher_Release_uint32": [ "void", [ TaskMesherPtr ] ],
 
-  // void      TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, char ** data, size_t * length);
-  "TaskMesher_GetRawMesh_uint8": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetRawMesh_uint16": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetRawMesh_uint32": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
+    // void      TaskMesher_GetRawMesh_uint8(TMesher * taskmesher, char ** data, size_t * length);
+    "TaskMesher_GetRawMesh_uint8": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
+    "TaskMesher_GetRawMesh_uint16": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
+    "TaskMesher_GetRawMesh_uint32": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
 
-  //void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
-  "TaskMesher_GetSimplifiedMesh_uint8": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetSimplifiedMesh_uint16": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
-  "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
+    //void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
+    "TaskMesher_GetSimplifiedMesh_uint8": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
+    "TaskMesher_GetSimplifiedMesh_uint16": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
+    "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
 let typeLookup = {
@@ -86,58 +86,58 @@ app.post('/remesh', null, {
         }
     }, function* () {
         let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = this.params;
-    console.log("Remeshing task " + task_id);
-    console.time("Remeshing task " + task_id);
-    let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
+        console.log("Remeshing task " + task_id);
+        console.time("Remeshing task " + task_id);
+        let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
 
-    let dimensions = new SizeTArray(3);
-    dimensions[0] = task_dim.x;
-    dimensions[1] = task_dim.y;
-    dimensions[2] = task_dim.z; 
+        let dimensions = new SizeTArray(3);
+        dimensions[0] = task_dim.x;
+        dimensions[1] = task_dim.y;
+        dimensions[2] = task_dim.z; 
 
-    switch (type) {
-        case "uint8":
-        case "uint16":
-        case "uint32":
-            let intType = typeLookup[type];
-            let segmentsTA = new intType.constructor(segments);
-            let seg = Buffer.from(segmentsTA.buffer);
-            seg.type = ref.types[intType];
+        switch (type) {
+            case "uint8":
+            case "uint16":
+            case "uint32":
+                let intType = typeLookup[type];
+                let segmentsTA = new intType.constructor(segments);
+                let seg = Buffer.from(segmentsTA.buffer);
+                seg.type = ref.types[intType];
 
-            intType.generate.async(segmentation_url, dimensions, segmentsTA.length, seg, function (err, mesher) {
-		console.log('hi', mesher);
-               for (let lod = 0; lod < 4; ++lod) {
-                    let lengthPtr = ref.alloc(ref.types.size_t);
-                    let dataPtr = ref.alloc(CharPtr);
-                    intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) {
-			console.log(dataPtr);
-//                        if (err) console.log(err);
+                intType.generate.async(segmentation_url, dimensions, segmentsTA.length, seg, function (err, mesher) {
+                    for (let lod = 0; lod < 4; ++lod) {
+                        let lengthPtr = ref.alloc(ref.types.size_t);
+                        let dataPtr = ref.alloc(CharPtr);
+                        intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
+    //                      if (err) console.log(err);
 
-                        let len = lengthPtr.deref();
-                        let data = ref.reinterpret(dataPtr.deref(), len);
+                            let len = lengthPtr.deref();
+                            let data = ref.reinterpret(dataPtr.deref(), len);
+                            let buf = new Buffer(data.length);
 
-                        let buf = new Buffer(data.length);
-			console.log('length', len, data.length);
-                        data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                        mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
-                            if (err) { console.error(err); }
-                            else {
-                                let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
-                                wstream.on('error', function(e) { console.error(e); });
-                                wstream.write(buf);
-                                wstream.end();
+                            if (len === 0) {
+                                console.log('0 byte array', lod, this.params);
                             }
-                        });
 
-                    //});
-                }
+                            data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                intType.release(mesher);
-            });
+                            mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
+                                if (err) { console.error(err); }
+                                else {
+                                    let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
+                                    wstream.on('error', function(e) { console.error(e); });
+                                    wstream.write(buf);
+                                    wstream.end();
+                                }
+                            });
+                        //});
+                    }
 
-            break;
-   }
-    console.timeEnd("Remeshing task " + task_id);
-    this.body = `meshing ${task_id}`;
+                    intType.release(mesher);
+                });
+
+                break;
+        }
+        console.timeEnd("Remeshing task " + task_id);
+        this.body = `meshing ${task_id}`;
 });
