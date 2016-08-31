@@ -69,12 +69,12 @@ function generateMeshes(segmentation_url, dimensions, segments, intType) {
     return new Promise((fulfill, reject) => {
         let segmentsTA = new intType.constructor(segments);
         let segmentsBuffer = Buffer.from(segmentsTA.buffer);
-        seg.type = ref.types[intType];
+        segmentsBuffer.type = ref.types[intType];
 
         let dimensionsArray = new SizeTArray(3);
-        dimensionsArray[0] = task_dim.x;
-        dimensionsArray[1] = task_dim.y;
-        dimensionsArray[2] = task_dim.z;
+        dimensionsArray[0] = dimensions.x;
+        dimensionsArray[1] = dimensions.y;
+        dimensionsArray[2] = dimensions.z;
 
         intType.generate.async(segmentation_url, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
             if (err) reject(err);
@@ -82,6 +82,8 @@ function generateMeshes(segmentation_url, dimensions, segments, intType) {
         });
     });
 }
+
+const MIP_COUNT = 4;
 
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
@@ -92,8 +94,9 @@ function processRemesh(params) {
         let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
         let intType = typeLookup[type];
 
-        generateMeshes(segmentation_url, task_dim, segments, type).then((mesher) => {
-            for (let lod = 0; lod < 4; ++lod) {
+        generateMeshes(segmentation_url, task_dim, segments, intType).then((mesher) => {
+            let remaining = MIP_COUNT;
+            for (let lod = 0; lod < MIP_COUNT; ++lod) {
                 let lengthPtr = ref.alloc(ref.types.size_t);
                 let dataPtr = ref.alloc(CharPtr);
                 intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
@@ -116,6 +119,10 @@ function processRemesh(params) {
                         wstream.on('error', function(e) { console.error(e); });
                         wstream.write(buf);
                         wstream.end();
+                        remaining--;
+                        if (remaining === 0) {
+                            fulfill(); 
+                        }
                     }
                 });
                 //});
@@ -123,17 +130,25 @@ function processRemesh(params) {
 
             intType.release(mesher);
         }).catch((err) => {
-            console.log('generateMeshes error', params);
+            console.log('generateMeshes error', err, params);
         });
     });
 }
 
+let busy = false;
 let remeshQueue = [];
 
 function checkRemeshQueue() {
-    if (remeshQueue.length > 0) {
-        processRemesh(remeshQueue.shift()).then(checkRemeshQueue);
-    }
+    setImmediate(() => {
+        console.log('queue length', remeshQueue.length);
+        if (remeshQueue.length > 0) {
+            busy = true;
+            processRemesh(remeshQueue.shift()).then(checkRemeshQueue);
+        } else {
+            console.log('finished queue');
+            busy = false;
+        } 
+    });
 }
 
 app.post('/remesh', null, {
@@ -156,7 +171,11 @@ app.post('/remesh', null, {
             rule: { min: 0 }
         }
     }, function* () {
+        console.log('got request');
         remeshQueue.push(this.params); // TODO, validate them more?
-        checkRemeshQueue();
-        this.body = `added ${task_id} to queue`;
+        if (!busy) checkRemeshQueue();
+        this.body = `added ${this.params.task_id} to queue`;
+        console.log('done');
 });
+
+//setInterval(function () { console.log('not busy'); }, 1000);
