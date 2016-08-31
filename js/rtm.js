@@ -65,6 +65,77 @@ let typeLookup = {
     }
 };
 
+function generateMeshes(segmentation_url, dimensions, segments, intType) {
+    return new Promise((fulfill, reject) => {
+        let segmentsTA = new intType.constructor(segments);
+        let segmentsBuffer = Buffer.from(segmentsTA.buffer);
+        seg.type = ref.types[intType];
+
+        let dimensionsArray = new SizeTArray(3);
+        dimensionsArray[0] = task_dim.x;
+        dimensionsArray[1] = task_dim.y;
+        dimensionsArray[2] = task_dim.z;
+
+        intType.generate.async(segmentation_url, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
+            if (err) reject(err);
+            else fulfill(mesher);
+        });
+    });
+}
+
+function processRemesh(params) {
+    return new Promise((fulfill, reject) => {
+        let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = params;
+        console.log("Remeshing task " + task_id);
+        console.time("Remeshing task " + task_id);
+
+        let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
+        let intType = typeLookup[type];
+
+        generateMeshes(segmentation_url, task_dim, segments, type).then((mesher) => {
+            for (let lod = 0; lod < 4; ++lod) {
+                let lengthPtr = ref.alloc(ref.types.size_t);
+                let dataPtr = ref.alloc(CharPtr);
+                intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
+                //if (err) console.log(err);
+
+                let len = lengthPtr.deref();
+                let data = ref.reinterpret(dataPtr.deref(), len);
+                let buf = new Buffer(data.length);
+
+                if (len === 0) {
+                    console.log('0 byte array', lod, this.params);
+                }
+
+                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
+
+                mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
+                    if (err) { console.error(err); }
+                    else {
+                        let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
+                        wstream.on('error', function(e) { console.error(e); });
+                        wstream.write(buf);
+                        wstream.end();
+                    }
+                });
+                //});
+            }
+
+            intType.release(mesher);
+        }).catch((err) => {
+            console.log('generateMeshes error', params);
+        });
+    });
+}
+
+let remeshQueue = [];
+
+function checkRemeshQueue() {
+    if (remeshQueue.length > 0) {
+        processRemesh(remeshQueue.shift()).then(checkRemeshQueue);
+    }
+}
+
 app.post('/remesh', null, {
         cell_id: { type: 'int', min: 0},
         task_id: { type: 'int', min: 0},
@@ -85,59 +156,7 @@ app.post('/remesh', null, {
             rule: { min: 0 }
         }
     }, function* () {
-        let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = this.params;
-        console.log("Remeshing task " + task_id);
-        console.time("Remeshing task " + task_id);
-        let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
-
-        let dimensions = new SizeTArray(3);
-        dimensions[0] = task_dim.x;
-        dimensions[1] = task_dim.y;
-        dimensions[2] = task_dim.z; 
-
-        switch (type) {
-            case "uint8":
-            case "uint16":
-            case "uint32":
-                let intType = typeLookup[type];
-                let segmentsTA = new intType.constructor(segments);
-                let seg = Buffer.from(segmentsTA.buffer);
-                seg.type = ref.types[intType];
-
-                intType.generate.async(segmentation_url, dimensions, segmentsTA.length, seg, function (err, mesher) {
-                    for (let lod = 0; lod < 4; ++lod) {
-                        let lengthPtr = ref.alloc(ref.types.size_t);
-                        let dataPtr = ref.alloc(CharPtr);
-                        intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
-    //                      if (err) console.log(err);
-
-                            let len = lengthPtr.deref();
-                            let data = ref.reinterpret(dataPtr.deref(), len);
-                            let buf = new Buffer(data.length);
-
-                            if (len === 0) {
-                                console.log('0 byte array', lod, this.params);
-                            }
-
-                            data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                            mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
-                                if (err) { console.error(err); }
-                                else {
-                                    let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
-                                    wstream.on('error', function(e) { console.error(e); });
-                                    wstream.write(buf);
-                                    wstream.end();
-                                }
-                            });
-                        //});
-                    }
-
-                    intType.release(mesher);
-                });
-
-                break;
-        }
-        console.timeEnd("Remeshing task " + task_id);
-        this.body = `meshing ${task_id}`;
+        remeshQueue.push(this.params); // TODO, validate them more?
+        checkRemeshQueue();
+        this.body = `added ${task_id} to queue`;
 });
