@@ -66,7 +66,7 @@ let typeLookup = {
     }
 };
 
-function generateMeshes(segmentation_url, dimensions, segments, intType) {
+function generateMeshes(segmentation_path, dimensions, segments, intType) {
     return new Promise((fulfill, reject) => {
         let segmentsTA = new intType.constructor(segments);
         let segmentsBuffer = Buffer.from(segmentsTA.buffer);
@@ -77,7 +77,7 @@ function generateMeshes(segmentation_url, dimensions, segments, intType) {
         dimensionsArray[1] = dimensions.y;
         dimensionsArray[2] = dimensions.z;
 
-        intType.generate.async(segmentation_url, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
+        intType.generate.async(segmentation_path, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
             if (err) reject(err);
             else fulfill(mesher);
         });
@@ -93,10 +93,10 @@ function processRemesh(params) {
         console.log("Remeshing task " + task_id);
         console.time("Remeshing task " + task_id);
 
-        let segmentation_url = `https://storage.googleapis.com/${bucket}/${volume_id}.segmentation.lzma`;
+        let segmentation_path = `/mnt/${bucket}_bucket/${volume_id}.segmentation.lzma`;
         let intType = typeLookup[type];
 
-        generateMeshes(segmentation_url, task_dim, segments, intType).then((mesher) => {
+        generateMeshes(segmentation_path, task_dim, segments, intType).then((mesher) => {
             console.log('generatemeshes time', Date.now() - start);
             let start2 = Date.now();
             let remaining = MIP_COUNT;

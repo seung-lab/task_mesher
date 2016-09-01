@@ -1,5 +1,4 @@
 #include "TaskMesher.h"
-#include "CurlObject.h"
 #include "LZMADec.h"
 #include "MeshIO.h"
 
@@ -9,13 +8,15 @@
 
 #include <fstream>
 #include <queue>
+#include <iostream>
+#include <iterator>
 
 /*****************************************************************/
 template<typename T>
 const char * CTaskMesher<T>::empty_mesh = "";
 
 template<typename T>
-CTaskMesher<T>::CTaskMesher(const std::string & url, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
+CTaskMesher<T>::CTaskMesher(const std::string & segmentation_path, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
 meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.end())
 {
     for (int i = 0; i < 5; ++i) {
@@ -27,16 +28,21 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         return;
     }
 
-    // 1. Download Segmentations
+    // 1. Load Segmentations
     std::vector<unsigned char> compressedBuf;
-    try {
-        CCurlObject request(url);
-        compressedBuf = request.getData();
-    }
-    catch (const std::string & e) {
-        std::cerr << e;
-        return;
-    }
+
+    std::ifstream segFile(segmentation_path, std::ios::in | std::ifstream::binary);
+    std::istreambuf_iterator<char> iter(segFile);
+    std::copy(iter,std::istreambuf_iterator<char>{},std::back_inserter(compressedBuf));
+
+    // try {
+    //     CCurlObject request(url);
+    //     compressedBuf = request.getData();
+    // }
+    // catch (const std::string & e) {
+    //     std::cerr << e;
+    //     return;
+    // }
 
     /*if (printDebug) {
         std::cout << "Downloaded segmentation data in: " << t.elapsed<double>() << " s.\n";
