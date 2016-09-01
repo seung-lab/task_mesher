@@ -87,6 +87,7 @@ const MIP_COUNT = 4;
 
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
+        let start = Date.now();
         let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = params;
         console.log("Remeshing task " + task_id);
         console.time("Remeshing task " + task_id);
@@ -95,6 +96,7 @@ function processRemesh(params) {
         let intType = typeLookup[type];
 
         generateMeshes(segmentation_url, task_dim, segments, intType).then((mesher) => {
+            console.log('generatemeshes time', Date.now() - start);
             let remaining = MIP_COUNT;
             for (let lod = 0; lod < MIP_COUNT; ++lod) {
                 let lengthPtr = ref.alloc(ref.types.size_t);
@@ -139,10 +141,10 @@ let busy = false;
 let remeshQueue = [];
 
 function checkRemeshQueue() {
+    busy = true;
     setImmediate(() => {
         console.log('queue length', remeshQueue.length);
         if (remeshQueue.length > 0) {
-            busy = true;
             processRemesh(remeshQueue.shift()).then(checkRemeshQueue);
         } else {
             console.log('finished queue');
@@ -174,6 +176,7 @@ app.post('/remesh', null, {
         console.log('got request');
         remeshQueue.push(this.params); // TODO, validate them more?
         if (!busy) checkRemeshQueue();
+        else console.log('busy');
         this.body = `added ${this.params.task_id} to queue`;
         console.log('done');
 });
