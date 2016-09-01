@@ -145,7 +145,16 @@ function checkRemeshQueue() {
     setImmediate(() => {
         console.log('queue length', remeshQueue.length);
         if (remeshQueue.length > 0) {
-            processRemesh(remeshQueue.shift()).then(checkRemeshQueue);
+            let reqParmas = remeshQueue.shift();
+            processRemesh(reqParmas).then(() => {
+                rp({
+                    method: 'POST'
+                    uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
+                }).then(() => {
+                    console.log('sent', reqParmas.task_id, 'to site server');
+                });
+                checkRemeshQueue();
+            });
         } else {
             console.log('finished queue');
             busy = false;
