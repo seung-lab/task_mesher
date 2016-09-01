@@ -138,32 +138,31 @@ function processRemesh(params) {
     });
 }
 
-let busy = false;
+const MAX_PROCESSING_COUNT = 4;
+let currentProcessingCount = 0;
 let remeshQueue = [];
 
 function checkRemeshQueue() {
-    busy = true;
-    setImmediate(() => {
-        console.log('queue length', remeshQueue.length);
-        if (remeshQueue.length > 0) {
-            let reqParmas = remeshQueue.shift();
-            processRemesh(reqParmas).then(() => {
-                console.log('sending req to site server');
-                rp({
-                    method: 'POST',
-                    uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
-                }).then(() => {
-                    console.log('sent', reqParmas.task_id, 'to site server');
-                }).catch((err) => {
-                    console.log('req err', err);
-                });
-                checkRemeshQueue();
-            }).catch((err) => console.log('processRemesh err', err));
-        } else {
-            console.log('finished queue');
-            busy = false;
-        } 
-    });
+    console.log('queue length', remeshQueue.length, MAX_PROCESSING_COUNT);
+    if (remeshQueue.length > 0) {
+        let reqParmas = remeshQueue.shift();
+        currentProcessingCount++;
+        processRemesh(reqParmas).then(() => {
+            console.log('sending req to site server');
+            rp({
+                method: 'POST',
+                uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
+            }).then(() => {
+                console.log('sent', reqParmas.task_id, 'to site server');
+            }).catch((err) => {
+                console.log('req err', err);
+            });
+            currentProcessingCount--;
+            checkRemeshQueue();
+        }).catch((err) => console.log('processRemesh err', err));
+    } else {
+        console.log('finished queue');
+    } 
 }
 
 app.post('/remesh', null, {
@@ -188,7 +187,7 @@ app.post('/remesh', null, {
     }, function* () {
         console.log('got request');
         remeshQueue.push(this.params); // TODO, validate them more?
-        if (!busy) checkRemeshQueue();
+        if (currentProcessingCount < MAX_PROCESSING_COUNT) checkRemeshQueue();
         else console.log('busy');
         this.body = `added ${this.params.task_id} to queue`;
         console.log('done');
