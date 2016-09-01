@@ -98,6 +98,7 @@ function processRemesh(params) {
 
         generateMeshes(segmentation_url, task_dim, segments, intType).then((mesher) => {
             console.log('generatemeshes time', Date.now() - start);
+            let start2 = Date.now();
             let remaining = MIP_COUNT;
             for (let lod = 0; lod < MIP_COUNT; ++lod) {
                 let lengthPtr = ref.alloc(ref.types.size_t);
@@ -124,6 +125,7 @@ function processRemesh(params) {
                         wstream.end();
                         remaining--;
                         if (remaining === 0) {
+                            console.log('rest time', Date.now() - start2);
                             fulfill(); 
                         }
                     }
