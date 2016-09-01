@@ -5,7 +5,8 @@ let ffi        = require('ffi');
 let ArrayType  = require('ref-array');
 let fs         = require('fs');
 let mkdirp     = require('mkdirp');
-let send = require('koa-send');
+let send       = require('koa-send');
+let rp         = require('request-promise');
 
 const WriteFolder = '/mnt/overview_meshes_bucket';
 
@@ -147,14 +148,17 @@ function checkRemeshQueue() {
         if (remeshQueue.length > 0) {
             let reqParmas = remeshQueue.shift();
             processRemesh(reqParmas).then(() => {
+                console.log('sending req to site server');
                 rp({
-                    method: 'POST'
+                    method: 'POST',
                     uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
                 }).then(() => {
                     console.log('sent', reqParmas.task_id, 'to site server');
+                }).catch((err) => {
+                    console.log('req err', err);
                 });
                 checkRemeshQueue();
-            });
+            }).catch((err) => console.log('processRemesh err', err));
         } else {
             console.log('finished queue');
             busy = false;
