@@ -85,8 +85,6 @@ function processRemesh(params) {
     return new Promise((fulfill, reject) => {
         let start = Date.now();
         let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = params;
-        console.log("Remeshing task " + task_id);
-        console.time("Remeshing task " + task_id);
 
         let segmentation_path = `/mnt/${bucket}_bucket/${volume_id}.segmentation.lzma`;
         let intType = typeLookup[type];
@@ -96,11 +94,10 @@ function processRemesh(params) {
             if (err) { console.error(err); }
             else {
                 generateMeshes(segmentation_path, task_dim, segments, intType, write_path).then((mesher) => {
-                    console.log('generateMeshes time', Date.now() - start);
                     intType.release(mesher);
                     fulfill();
                 }).catch((err) => {
-                    console.log('generateMeshes error', err, params);
+                    console.log('generateMeshes error', err, params); // this one shouldn't fail, need to do something
                 });
             }
         });
@@ -112,25 +109,27 @@ let currentProcessingCount = 0;
 let remeshQueue = [];
 
 function checkRemeshQueue() {
-    console.log('queue length', remeshQueue.length, MAX_PROCESSING_COUNT);
+    console.log('queue length', remeshQueue.length, currentProcessingCount);
     if (remeshQueue.length > 0) {
-        let reqParmas = remeshQueue.shift();
+        let reqParams = remeshQueue.shift();
         currentProcessingCount++;
-        processRemesh(reqParmas).then(() => {
-            console.log('sending req to site server');
+        console.log('processing', reqParams.task_id);
+        let start = Date.now();
+        processRemesh(reqParams).then(() => {
+            console.log('time', reqParams.task_id, Date.now() - start);
             rp({
                 method: 'POST',
-                uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
+                uri: `http://beta.eyewire.org/1.0/task/${reqParams.task_id}/mesh_updated/`
             }).then(() => {
-                console.log('sent', reqParmas.task_id, 'to site server');
+                console.log('sent', reqParams.task_id, 'to site server');
             }).catch((err) => {
-                console.log('req err', err);
+                console.log('failed to send mesh_update', err); // no big deal if this fails?
             });
             currentProcessingCount--;
             checkRemeshQueue();
         }).catch((err) => console.log('processRemesh err', err));
     } else {
-        console.log('finished queue');
+        console.log('queue empty');
     } 
 }
 
@@ -154,12 +153,12 @@ app.post('/remesh', null, {
             rule: { min: 0 }
         }
     }, function* () {
-        console.log('got request');
+//        console.log('got request');
         remeshQueue.push(this.params); // TODO, validate them more?
         if (currentProcessingCount < MAX_PROCESSING_COUNT) checkRemeshQueue();
-        else console.log('busy');
+//        else console.log('busy');
         this.body = `added ${this.params.task_id} to queue`;
-        console.log('done');
+//        console.log('done');
 });
 
 //setInterval(function () { console.log('not busy'); }, 1000);
