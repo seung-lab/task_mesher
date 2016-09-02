@@ -15,6 +15,9 @@
 template<typename T>
 const char * CTaskMesher<T>::empty_mesh = "";
 
+struct timespec start, finish;
+double elapsed;
+
 template<typename T>
 CTaskMesher<T>::CTaskMesher(const std::string & segmentation_path, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, const std::string & write_path) :
 meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.end())
@@ -27,6 +30,8 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         meshed_ = true;
         return;
     }
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
 
     // 1. Load Segmentations
     std::vector<unsigned char> compressedBuf;
@@ -43,20 +48,13 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
 
     segFile.close();
 
-    // try {
-    //     CCurlObject request(url);
-    //     compressedBuf = request.getData();
-    // }
-    // catch (const std::string & e) {
-    //     std::cerr << e;
-    //     return;
-    // }
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+    elapsed = (finish.tv_sec - start.tv_sec);
+    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
 
-    /*if (printDebug) {
-        std::cout << "Downloaded segmentation data in: " << t.elapsed<double>() << " s.\n";
-        t.reset();
-    }*/
+    std::cout << "Step 1: " << elapsed << "\n";
 
+    clock_gettime(CLOCK_MONOTONIC, &start);
     // 2. Decompress LZMA stream;
     try {
         LZMADec dec(compressedBuf, sizeof(T) * dim_[0] * dim_[1] * dim_[2]);
@@ -67,6 +65,12 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
         return;
     }
 
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+    elapsed = (finish.tv_sec - start.tv_sec);
+    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+    std::cout << "Step 2: " << elapsed << "\n";
+
     /*if (printDebug) {
         std::cout << "Decompressed segmentation data in: " << t.elapsed<double>() << " s.\n";
         t.reset();
@@ -74,24 +78,38 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
 
     volume_ = reinterpret_cast<T*>(&buffer_[0]);
 
-
+    clock_gettime(CLOCK_MONOTONIC, &start);
     // 3. Mask and Merge Segments
     selectSegments(false);
+    
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+    elapsed = (finish.tv_sec - start.tv_sec);
+    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+    std::cout << "Step 3: " << elapsed << "\n";
 
     /*if (printDebug) {
       std::cout << "Masked segmentation data in " << t.elapsed<double>() << " s.\n";
       t.reset();
     }*/
     
+    clock_gettime(CLOCK_MONOTONIC, &start);
     // 4. Run Marching Cubes
     zi::mesh::marching_cubes<T> mc;
     mc.marche(volume_, dim_[2], dim_[1], dim_[0]);
+
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+    elapsed = (finish.tv_sec - start.tv_sec);
+    elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+    std::cout << "Step 4: " << elapsed << "\n";
 
     /*if (printDebug) {
         std::cout << "Marching Cubes completed in " << t.elapsed<double>() << " s.\n";
         t.reset();
     }*/
 
+    clock_gettime(CLOCK_MONOTONIC, &start);
     // 5. Mesh Cleanup and Simplification
     if (mc.count(1) > 0) {
         std::vector<float> strip;
@@ -125,6 +143,12 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
             WriteObj(s, "test_0.obj");
             t.reset();
         }*/ 
+        
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+        std::cout << "Step 5: " << elapsed << "\n";
 
         for (int mip = 1; mip <= 3; ++mip) {
             s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
@@ -132,12 +156,6 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
             meshLength_[1 + mip] = strip.size() * sizeof(float);
             meshData_[1 + mip] = new char[meshLength_[1 + mip]];
             memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
-
-            std::ofstream outFile(write_path + std::to_string(mip) + ".dstrip", std::ios::out | std::ofstream::binary);
-            outFile.write(meshData_[1 + mip], meshLength_[1 + mip]);
-            outFile.close();
-
-            std::cout << "writing to " << write_path + std::to_string(mip) + ".dstrip" << "\n";
 
             //WriteDegTriStrip(s, std::to_string(mip)+".bin");
             //WriteDegTriStrip(s, "test_" + std::to_string(mip) + ".strip");
@@ -148,6 +166,28 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
                 t.reset();
             }*/
         }
+
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+        std::cout << "Step 6: " << elapsed << "\n";
+
+        clock_gettime(CLOCK_MONOTONIC, &start);
+
+        for (int mip = 1; mip <= 3; ++mip) {
+          std::ofstream outFile(write_path + std::to_string(mip) + ".dstrip", std::ios::out | std::ofstream::binary);
+          outFile.write(meshData_[1 + mip], meshLength_[1 + mip]);
+          outFile.close();
+
+          std::cout << "writing to " << write_path + std::to_string(mip) + ".dstrip" << "\n";
+        }
+
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        elapsed = (finish.tv_sec - start.tv_sec);
+        elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+        std::cout << "Step 7: " << elapsed << "\n";
     }
 
     /*if (printDebug) {
