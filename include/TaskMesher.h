@@ -34,7 +34,7 @@ public:
   static const char * empty_mesh;
   bool GetMesh(uint8_t lod, const char ** data, size_t * length) const;
 
-  CTaskMesher(const std::string & url, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments);
+  CTaskMesher(const std::string & segmentation_path, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, const std::string & write_path);
   ~CTaskMesher();
 
 };
@@ -44,10 +44,10 @@ typedef struct TaskMeshHandle TMesher;
 #ifdef __cplusplus
 extern "C" {
 #endif
-  TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);
-  TMesher * TaskMesher_Generate_uint16(char * url, size_t dim[3], uint16_t segmentCount, uint16_t * segments);
-  TMesher * TaskMesher_Generate_uint32(char * url, size_t dim[3], uint32_t segmentCount, uint32_t * segments);
-  TMesher * TaskMesher_Generate_uint64(char * url, size_t dim[3], uint64_t segmentCount, uint64_t * segments);
+  TMesher * TaskMesher_Generate_uint8(char * segmentation_path, size_t dim[3], uint8_t segmentCount, uint8_t * segments, char * write_path);
+  TMesher * TaskMesher_Generate_uint16(char * segmentation_path, size_t dim[3], uint16_t segmentCount, uint16_t * segments, char * write_path);
+  TMesher * TaskMesher_Generate_uint32(char * segmentation_path, size_t dim[3], uint32_t segmentCount, uint32_t * segments, char * write_path);
+  TMesher * TaskMesher_Generate_uint64(char * segmentation_path, size_t dim[3], uint64_t segmentCount, uint64_t * segments, char * write_path);
   void      TaskMesher_Release_uint8(TMesher * taskmesher);
   void      TaskMesher_Release_uint16(TMesher * taskmesher);
   void      TaskMesher_Release_uint32(TMesher * taskmesher);

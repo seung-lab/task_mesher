@@ -16,7 +16,7 @@ template<typename T>
 const char * CTaskMesher<T>::empty_mesh = "";
 
 template<typename T>
-CTaskMesher<T>::CTaskMesher(const std::string & segmentation_path, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
+CTaskMesher<T>::CTaskMesher(const std::string & segmentation_path, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, const std::string & write_path) :
 meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.end())
 {
     for (int i = 0; i < 5; ++i) {
@@ -40,6 +40,8 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
 
     std::istreambuf_iterator<char> iter(segFile);
     std::copy(iter,std::istreambuf_iterator<char>{},std::back_inserter(compressedBuf));
+
+    segFile.close();
 
     // try {
     //     CCurlObject request(url);
@@ -130,6 +132,13 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
             meshLength_[1 + mip] = strip.size() * sizeof(float);
             meshData_[1 + mip] = new char[meshLength_[1 + mip]];
             memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
+
+            std::ofstream outFile(write_path + std::to_string(mip) + ".dstrip", std::ios::out | std::ofstream::binary);
+            outFile.write(meshData_[1 + mip], meshLength_[1 + mip]);
+            outFile.close();
+
+            std::cout << "writing to " << write_path + std::to_string(mip) + ".dstrip" << "\n";
+
             //WriteDegTriStrip(s, std::to_string(mip)+".bin");
             //WriteDegTriStrip(s, "test_" + std::to_string(mip) + ".strip");
             //WriteTriMesh(s, "test_" + std::to_string(mip) + ".mesh");
@@ -283,24 +292,24 @@ bool CTaskMesher<T>::GetMesh(uint8_t lod, const char ** data, size_t * length) c
 
 /*****************************************************************/
 
-extern "C" TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments) {
+extern "C" TMesher * TaskMesher_Generate_uint8(char * segmentation_path, size_t dim[3], uint8_t segmentCount, uint8_t * segments, char * write_path) {
   std::vector<uint8_t> seg(segments, segments + segmentCount);
-  return (TMesher *)(new CTaskMesher<uint8_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg));
+  return (TMesher *)(new CTaskMesher<uint8_t>(std::string(segmentation_path), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg, std::string(write_path)));
 }
 
-extern "C" TMesher * TaskMesher_Generate_uint16(char * url, size_t dim[3], uint16_t segmentCount, uint16_t * segments) {
+extern "C" TMesher * TaskMesher_Generate_uint16(char * segmentation_path, size_t dim[3], uint16_t segmentCount, uint16_t * segments, char * write_path) {
   std::vector<uint16_t> seg(segments, segments + segmentCount);
-  return (TMesher *)(new CTaskMesher<uint16_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg));
+  return (TMesher *)(new CTaskMesher<uint16_t>(std::string(segmentation_path), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg, std::string(write_path)));
 }
 
-extern "C" TMesher * TaskMesher_Generate_uint32(char * url, size_t dim[3], uint32_t segmentCount, uint32_t * segments) {
+extern "C" TMesher * TaskMesher_Generate_uint32(char * url, size_t dim[3], uint32_t segmentCount, uint32_t * segments, char * write_path) {
   std::vector<uint32_t> seg(segments, segments + segmentCount);
-  return (TMesher *)(new CTaskMesher<uint32_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg));
+  return (TMesher *)(new CTaskMesher<uint32_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg, std::string(write_path)));
 }
 
-extern "C" TMesher * TaskMesher_Generate_uint64(char * url, size_t dim[3], uint64_t segmentCount, uint64_t * segments) {
+extern "C" TMesher * TaskMesher_Generate_uint64(char * url, size_t dim[3], uint64_t segmentCount, uint64_t * segments, char * write_path) {
   std::vector<uint64_t> seg(segments, segments + segmentCount);
-  return (TMesher *)(new CTaskMesher<uint64_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg));
+  return (TMesher *)(new CTaskMesher<uint64_t>(std::string(url), zi::vl::vec<size_t, 3>(dim[0], dim[1], dim[2]), seg, std::string(write_path)));
 }
 
 

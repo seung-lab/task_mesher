@@ -22,9 +22,9 @@ let CharPtrPtr = ref.refType(ref.types.CString);
 
 let TaskMesherLib = ffi.Library('../lib/librtm', {
     // TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);  
-    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
-    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
-    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr ] ],
+    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr, "string" ] ],
+    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr, "string" ] ],
+    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr, "string" ] ],
 
     // void      TaskMesher_Release_uint8(TMesher * taskmesher);
     "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
@@ -35,11 +35,6 @@ let TaskMesherLib = ffi.Library('../lib/librtm', {
     "TaskMesher_GetRawMesh_uint8": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
     "TaskMesher_GetRawMesh_uint16": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
     "TaskMesher_GetRawMesh_uint32": [ "void", [ TaskMesherPtr, CharPtrPtr, SizeTPtr ] ],
-
-    //void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, char ** data, size_t * length);
-    "TaskMesher_GetSimplifiedMesh_uint8": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
-    "TaskMesher_GetSimplifiedMesh_uint16": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
-    "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
 let typeLookup = {
@@ -66,7 +61,7 @@ let typeLookup = {
     }
 };
 
-function generateMeshes(segmentation_path, dimensions, segments, intType) {
+function generateMeshes(segmentation_path, dimensions, segments, intType, write_path) {
     return new Promise((fulfill, reject) => {
         let segmentsTA = new intType.constructor(segments);
         let segmentsBuffer = Buffer.from(segmentsTA.buffer);
@@ -77,7 +72,7 @@ function generateMeshes(segmentation_path, dimensions, segments, intType) {
         dimensionsArray[1] = dimensions.y;
         dimensionsArray[2] = dimensions.z;
 
-        intType.generate.async(segmentation_path, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
+        intType.generate.async(segmentation_path, dimensionsArray, segmentsTA.length, segmentsBuffer, write_path, function (err, mesher) {
             if (err) reject(err);
             else fulfill(mesher);
         });
@@ -96,46 +91,18 @@ function processRemesh(params) {
         let segmentation_path = `/mnt/${bucket}_bucket/${volume_id}.segmentation.lzma`;
         let intType = typeLookup[type];
 
-        generateMeshes(segmentation_path, task_dim, segments, intType).then((mesher) => {
-            console.log('generatemeshes time', Date.now() - start);
-            let start2 = Date.now();
-            let remaining = MIP_COUNT;
-            for (let lod = 0; lod < MIP_COUNT; ++lod) {
-                let lengthPtr = ref.alloc(ref.types.size_t);
-                let dataPtr = ref.alloc(CharPtr);
-                intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
-                //if (err) console.log(err);
-
-                let len = lengthPtr.deref();
-                let data = ref.reinterpret(dataPtr.deref(), len);
-                let buf = new Buffer(data.length);
-
-                if (len === 0) {
-                    console.log('0 byte array', lod, this.params);
-                }
-
-                data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
-
-                mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
-                        remaining--;
-                        if (remaining === 0) {
-                            console.log('rest time', Date.now() - start2);
-                            fulfill(); 
-                        }
-                    }
+        let write_path = `${WriteFolder}/meshes/${cell_id}/${task_id}/`;
+        mkdirp(write_path, function (err) {
+            if (err) { console.error(err); }
+            else {
+                generateMeshes(segmentation_path, task_dim, segments, intType, write_path).then((mesher) => {
+                    console.log('generateMeshes time', Date.now() - start);
+                    intType.release(mesher);
+                    fulfill();
+                }).catch((err) => {
+                    console.log('generateMeshes error', err, params);
                 });
-                //});
             }
-
-            intType.release(mesher);
-        }).catch((err) => {
-            console.log('generateMeshes error', err, params);
         });
     });
 }
