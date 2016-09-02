@@ -18,8 +18,8 @@ ar rcs lib/liblzma_dec.a build/LzmaLib.o build/LzmaDec.o build/Alloc.o
 echo "Compiling RTM"
 g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/MeshIO.cpp -o build/MeshIO.o
 g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/LZMADec.cpp -Wl,-Bstatic -llzma_dec -o build/LZMADec.o
-g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/CurlObject.cpp -Wl,-Bdynamic -lcurl -o build/CurlObject.o
+# g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/CurlObject.cpp -Wl,-Bdynamic -lcurl -o build/CurlObject.o
 g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/TaskMesher.cpp -o build/TaskMesher.o
 
 echo "Creating librtm.so"
-g++ $CXXLIBS -shared -fPIC -o lib/librtm.so build/MeshIO.o build/LZMADec.o build/CurlObject.o build/TaskMesher.o  -Wl,-Bstatic -llzma_dec -Wl,-Bdynamic -lcurl
+g++ $CXXLIBS -shared -fPIC -o lib/librtm.so build/MeshIO.o build/LZMADec.o build/TaskMesher.o  -Wl,-Bstatic -llzma_dec -Wl,-Bdynamic

@@ -32,6 +32,12 @@ meshed_(false), volume_(NULL), dim_(dim), segments_(segments.begin(), segments.e
     std::vector<unsigned char> compressedBuf;
 
     std::ifstream segFile(segmentation_path, std::ios::in | std::ifstream::binary);
+
+    if (!segFile) {
+      std::cout << "Error opening file: " << segmentation_path << "\n";
+      return;
+    }
+
     std::istreambuf_iterator<char> iter(segFile);
     std::copy(iter,std::istreambuf_iterator<char>{},std::back_inserter(compressedBuf));
 
