@@ -107,7 +107,7 @@ function processRemesh(params) {
     });
 }
 
-const MAX_PROCESSING_COUNT = 4;
+const MAX_PROCESSING_COUNT = process.env.THREADS || 4;
 let currentProcessingCount = 0;
 let remeshQueue = [];
 
