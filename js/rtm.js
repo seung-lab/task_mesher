@@ -140,30 +140,31 @@ function processRemesh(params) {
     });
 }
 
-const MAX_PROCESSING_COUNT = 4;
+const MAX_PROCESSING_COUNT = process.env.THREADS || 4;
 let currentProcessingCount = 0;
 let remeshQueue = [];
 
 function checkRemeshQueue() {
-    console.log('queue length', remeshQueue.length, MAX_PROCESSING_COUNT);
+    console.log('queue length', remeshQueue.length, currentProcessingCount); 
     if (remeshQueue.length > 0) {
-        let reqParmas = remeshQueue.shift();
+        let reqParams = remeshQueue.shift();
         currentProcessingCount++;
-        processRemesh(reqParmas).then(() => {
-            console.log('sending req to site server');
+        const start = Date.now();
+        processRemesh(reqParams).then(() => {
+            console.log('time', reqParams.task_id, Date.now() - start);
             rp({
                 method: 'POST',
-                uri: `http://beta.eyewire.org/1.0/task/${reqParmas.task_id}/mesh_updated/`
+                uri: `http://beta.eyewire.org/1.0/task/${reqParams.task_id}/mesh_updated/`
             }).then(() => {
-                console.log('sent', reqParmas.task_id, 'to site server');
+                console.log('sent', reqParams.task_id, 'to site server');
             }).catch((err) => {
-                console.log('req err', err);
+                console.log('failed to send mesh_update', err); // no big deal if this fails?
             });
             currentProcessingCount--;
             checkRemeshQueue();
         }).catch((err) => console.log('processRemesh err', err));
     } else {
-        console.log('finished queue');
+        console.log('queue empty');
     } 
 }
 
