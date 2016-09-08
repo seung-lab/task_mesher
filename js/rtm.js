@@ -7,8 +7,7 @@ let fs         = require('fs');
 let mkdirp     = require('mkdirp');
 let send       = require('koa-send');
 let rp         = require('request-promise');
-
-const WriteFolder = '/mnt/overview_meshes_bucket';
+let gcs        = require('@google-cloud/storage')();
 
 // Typedefs
 let TaskMesherPtr = ref.refType(ref.types.void);
@@ -85,6 +84,7 @@ function generateMeshes(segmentation_path, dimensions, segments, intType) {
 }
 
 const MIP_COUNT = 4;
+let writeBucket = gcs.bucket('overview_meshes');
 
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
@@ -116,22 +116,27 @@ function processRemesh(params) {
 
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                mkdirp(`${WriteFolder}/meshes/${cell_id}/${task_id}`, function (err) {
-                    if (err) { console.error(err); }
-                    else {
-                        let wstream = fs.createWriteStream(`${WriteFolder}/meshes/${cell_id}/${task_id}/${lod}.dstrip`, {defaultEncoding: 'binary'});
-                        wstream.on('error', function(e) { console.error(e); });
-                        wstream.write(buf);
-                        wstream.end();
+                    const mipPath = `meshes/${cell_id}/${task_id}/${lod}.dstrip`;
+                    let wstream = writeBucket.file(mipPath).createWriteStream({
+                        gzip: true,
+                        metadata: {
+                            cacheControl: 'private, max-age=0, no-transform'
+                        },
+                        resumable: false // small speed boost, is it worth it?
+                    });
+                    wstream.on('error', function(e) { console.error(e); });
+                    wstream.end(buf);
+                    
+
+                    wstream.on('finish', () => {
+                        console.log('wrote', mipPath);
                         remaining--;
                         if (remaining === 0) {
                             console.log('rest time', Date.now() - start2);
                             fulfill(); 
                         }
-                    }
-                });
-                //});
-            }
+                    });
+                }
 
             intType.release(mesher);
         }).catch((err) => {
@@ -154,7 +159,7 @@ function checkRemeshQueue() {
             console.log('time', reqParams.task_id, Date.now() - start);
             rp({
                 method: 'POST',
-                uri: `http://beta.eyewire.org/1.0/task/${reqParams.task_id}/mesh_updated/`
+                uri: `http://nkem.eyewire.org/1.0/task/${reqParams.task_id}/mesh_updated/`
             }).then(() => {
                 console.log('sent', reqParams.task_id, 'to site server');
             }).catch((err) => {
