@@ -116,27 +116,26 @@ function processRemesh(params) {
 
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
-                    const mipPath = `meshes/${cell_id}/${task_id}/${lod}.dstrip`;
-                    let wstream = writeBucket.file(mipPath).createWriteStream({
-                        gzip: true,
-                        metadata: {
-                            cacheControl: 'private, max-age=0, no-transform'
-                        },
-                        resumable: false // small speed boost, is it worth it?
-                    });
-                    wstream.on('error', function(e) { console.error(e); });
-                    wstream.end(buf);
-                    
+                const mipPath = `meshes/${cell_id}/${task_id}/${lod}.dstrip`;
+                let wstream = writeBucket.file(mipPath).createWriteStream({
+                    gzip: true,
+                    metadata: {
+                        cacheControl: 'private, max-age=0, no-transform'
+                    },
+                    resumable: false // small speed boost, is it worth it?
+                });
+                wstream.on('error', function(e) { console.error(e); });
+                wstream.end(buf);
 
-                    wstream.on('finish', () => {
-                        console.log('wrote', mipPath);
-                        remaining--;
-                        if (remaining === 0) {
-                            console.log('rest time', Date.now() - start2);
-                            fulfill(); 
-                        }
-                    });
-                }
+                wstream.on('finish', () => {
+                    console.log('wrote', mipPath);
+                    remaining--;
+                    if (remaining === 0) {
+                        console.log('rest time', Date.now() - start2);
+                        fulfill(); 
+                    }
+                });
+            }
 
             intType.release(mesher);
         }).catch((err) => {
