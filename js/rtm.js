@@ -86,18 +86,28 @@ function generateMeshes(segmentation_path, dimensions, segments, intType) {
 const MIP_COUNT = 4;
 let writeBucket = gcs.bucket('overview_meshes');
 
+let syncMap = new Map();
+let processCount = 0;
+
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
         let start = Date.now();
         let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = params;
         console.log("Remeshing task " + task_id);
-        console.time("Remeshing task " + task_id);
 
         let segmentation_path = `/mnt/${bucket}_bucket/${volume_id}.segmentation.lzma`;
         let intType = typeLookup[type];
 
+        let processId = processCount++;
+        syncMap.set(task_id, processId);
+
         generateMeshes(segmentation_path, task_dim, segments, intType).then((mesher) => {
-            console.log('generatemeshes time', Date.now() - start);
+            if (syncMap.get(task_id) !== processId) {
+                console.log('aborted save, not newest mesh', task_id, processId, syncMap.get(task_id));
+                fulfill();
+            }
+            syncMap.delete(task_id);
+
             let start2 = Date.now();
             let remaining = MIP_COUNT;
             for (let lod = 0; lod < MIP_COUNT; ++lod) {
