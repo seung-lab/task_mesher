@@ -92,10 +92,10 @@ let processCount = 0;
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
         let start = Date.now();
-        let {task_id, cell_id, type, task_dim, bucket, volume_id, segments} = params;
+        let {task_id, cell_id, type, task_dim, bucket, path, segments} = params;
         console.log("Remeshing task " + task_id);
 
-        let segmentation_path = `/mnt/${bucket}_bucket/${volume_id}.segmentation.lzma`;
+        let segmentation_path = `/mnt/${bucket}_bucket/${path}segmentation.lzma`;
         let intType = typeLookup[type];
 
         let processId = processCount++;
@@ -185,7 +185,6 @@ function checkRemeshQueue() {
 app.post('/remesh', null, {
         cell_id: { type: 'int', min: 0},
         task_id: { type: 'int', min: 0},
-        volume_id: { type: 'int', min: 0},
         type: ['uint8', 'uint16', 'uint32'],
         task_dim: {
             type: 'object',
@@ -196,6 +195,7 @@ app.post('/remesh', null, {
             }
         },
         bucket: { type: 'string' },
+        path: { type: 'string'},
         segments: {
             type: 'array',
             itemType: 'int',
