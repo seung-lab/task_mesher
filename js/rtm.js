@@ -1,5 +1,6 @@
 // Packages
 let app = module.exports = require('./mykoa.js')();
+let Promise    = require('bluebird');
 let ref        = require('ref');
 let ffi        = require('ffi');
 let ArrayType  = require('ref-array');
@@ -8,6 +9,16 @@ let mkdirp     = require('mkdirp');
 let send       = require('koa-send');
 let rp         = require('request-promise');
 let gcs        = require('@google-cloud/storage')();
+let lzma       = require('lzma-native');     // one time decompression of segmentation
+let lz4        = require('lz4');             // (de)compression of segmentation from/to redis
+
+let NodeRedis  = require('redis');           // cache for volume data (metadata, segment bboxes and sizes, segmentation)
+let redis = NodeRedis.createClient('6379', '127.0.0.1', {return_buffers: true});
+
+Promise.promisifyAll(NodeRedis.RedisClient.prototype);
+Promise.promisifyAll(NodeRedis.Multi.prototype);
+
+lzma.setPromiseAPI(Promise);
 
 // Typedefs
 let TaskMesherPtr = ref.refType(ref.types.void);
@@ -16,14 +27,15 @@ let UInt8Ptr = ref.refType(ref.types.uint8);
 let UInt16Ptr = ref.refType(ref.types.uint16);
 let UInt32Ptr = ref.refType(ref.types.uint32);
 let SizeTPtr = ref.refType(ref.types.size_t);
+let UCharPtr = ref.refType(ref.types.uchar);
 let CharPtr = ref.refType(ref.types.char);
 let CharPtrPtr = ref.refType(ref.types.CString);
 
 let TaskMesherLib = ffi.Library('../lib/librtm', {
-    // TMesher * TaskMesher_Generate_uint8(char * url, size_t dim[3], uint8_t segmentCount, uint8_t * segments);  
-    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ "string", SizeTArray, "uint8", UInt8Ptr ] ],
-    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ "string", SizeTArray, "uint16", UInt16Ptr ] ],
-    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ "string", SizeTArray, "uint32", UInt32Ptr ] ],
+    // TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t byteLength, size_t dim[3], uint8_t * segments, uint8_t segmentCount);  
+    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt8Ptr, "uint8" ] ],
+    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt16Ptr, "uint16" ] ],
+    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt32Ptr, "uint32" ] ],
 
     // void      TaskMesher_Release_uint8(TMesher * taskmesher);
     "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
@@ -65,20 +77,82 @@ let typeLookup = {
     }
 };
 
+/* cachedFetch
+
+ * Input: request-promise input, e.g. { url: path, encoding: null }
+ * 
+ * Description: Checks if the requested object exists in cache (using path as key).
+ *              If not, download it and send it gzipped to cache, otherwise retrieve and decompress it from cache.
+ *              LZMA segmentation (file ends with .lzma) will be decompressed first before it is recompressed with
+ *              gzip and send to cache (trading a slight increase in file size for major speedup).
+ * 
+ * Returns: Buffer
+ */
+function cachedFetch(request) {
+    return redis.getAsync(request.url)
+        .then(function (value) {
+            if (value !== null) {
+                let decoded_resp = lz4.decode(value);
+                console.log(request.url + " successfully retrieved from cache.");
+                return decoded_resp;
+            }
+            else
+            {
+                console.log(request.url + " not in cache. Downloading ...");
+                return rp(request)
+                .then(function (resp) {
+                    console.log(request.url + " successfully downloaded.");
+                    if (request.url.endsWith(".lzma")) {
+                        console.log("Decompressing " + request.url);
+                        return lzma.decompress(resp);
+                    }
+                    else {
+                        return resp;
+                    }
+                })
+                .then(function (decoded_resp) {
+                    compressed_resp = lz4.encode(decoded_resp);
+                    console.log(request.url + " compressed (Ratio: " + (100.0 * compressed_resp.byteLength / decoded_resp.byteLength).toFixed(2) + " %)");
+                    return redis.setAsync(request.url, compressed_resp)
+                    .then(function () {
+                        console.log(request.url + " sent to cache.");
+                        return decoded_resp;
+                    })
+                    .catch(function (err) {
+                        console.log("Caching " + request.url + " failed: " + err);
+                        return decoded_resp;
+                    });
+                })
+                .catch(function (err) {
+                    throw new Error("Aquiring " + request.url + " failed: " + err);
+                });
+            }
+        })
+        .catch(function (err) {
+            throw new Error("Unknown redis error when loading " + request.url + ": " + err);
+        });
+}
+
 function generateMeshes(segmentation_path, dimensions, segments, intType) {
     return new Promise((fulfill, reject) => {
-        let segmentsTA = new intType.constructor(segments);
-        let segmentsBuffer = Buffer.from(segmentsTA.buffer);
-        segmentsBuffer.type = ref.types[intType];
+        return cachedFetch({ url: segmentation_path + 'segmentation.lzma', encoding: null })
+        .then(function(segmentation) {
+            let segmentsTA = new intType.constructor(segments);
+            let segmentsBuffer = Buffer.from(segmentsTA.buffer);
+            segmentsBuffer.type = ref.types[intType];
 
-        let dimensionsArray = new SizeTArray(3);
-        dimensionsArray[0] = dimensions.x;
-        dimensionsArray[1] = dimensions.y;
-        dimensionsArray[2] = dimensions.z;
+            let dimensionsArray = new SizeTArray(3);
+            dimensionsArray[0] = dimensions.x;
+            dimensionsArray[1] = dimensions.y;
+            dimensionsArray[2] = dimensions.z;
 
-        intType.generate.async(segmentation_path, dimensionsArray, segmentsTA.length, segmentsBuffer, function (err, mesher) {
-            if (err) reject(err);
-            else fulfill(mesher);
+            intType.generate.async(segmentation, dimensionsArray, segmentsBuffer, segmentsTA.length, function (err, mesher) {
+                if (err) reject(err);
+                else fulfill(mesher);
+            });
+        })
+        .catch(function (err) {
+            reject(err);
         });
     });
 }
@@ -95,7 +169,7 @@ function processRemesh(params) {
         let {task_id, cell_id, type, task_dim, bucket, path, segments} = params;
         console.log("Remeshing task " + task_id);
 
-        let segmentation_path = `/mnt/${bucket}_bucket/${path}segmentation.lzma`;
+        let segmentation_path = `https://storage.googleapis.com/${bucket}/${path}`;
         let intType = typeLookup[type];
 
         let processId = processCount++;
