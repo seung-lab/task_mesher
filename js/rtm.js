@@ -184,7 +184,7 @@ function processRemesh(params) {
             syncMap.delete(task_id);
 
             let remaining = MIP_COUNT;
-            for (const lod = 0; lod < MIP_COUNT; ++lod) {
+            for (let lod = 0; lod < MIP_COUNT; ++lod) {
                 const lengthPtr = ref.alloc(ref.types.size_t);
                 const dataPtr = ref.alloc(CharPtr);
                 intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
@@ -238,7 +238,7 @@ const remeshQueuePriorities = {
 };
 
 function checkRemeshQueue() {
-    const remeshQueue = remeshQueuePriorities.high || remeshQueuePriorities.low;
+    const remeshQueue = remeshQueuePriorities.high.length ? remeshQueuePriorities.high : remeshQueuePriorities.low;
     log.info({
         event: 'queueInfo',
         lengths: {

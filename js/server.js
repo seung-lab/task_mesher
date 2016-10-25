@@ -26,10 +26,6 @@ if (port) {
 function* logger (next) {
 	logger.reqCounter = (logger.reqCounter || 0) + 1;
 
-	if (newrelic) {
-		newrelic.setTransactionName('*');
-	}
-
 	const requestInfo = {url: this.url, method: this.method};
 
 	if (this.request.body) {
@@ -46,6 +42,12 @@ function* logger (next) {
 	const ms = (elapsed[0] * 1e9 + elapsed[1]) / 1e6;
 
 	this.log.info({status: this.status, ms: ms, event: 'completeRequest'});
+}
+
+function isUndefinedInObject(obj) {
+	return Object.keys(obj).some((key) => {
+		return obj[key] === undefined;
+	});
 }
 
 // forms error messages and logs them
