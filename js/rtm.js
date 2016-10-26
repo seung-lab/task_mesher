@@ -1,19 +1,20 @@
 // Packages
-let app = module.exports = require('./mykoa.js')();
-let Promise    = require('bluebird');
-let ref        = require('ref');
-let ffi        = require('ffi');
-let ArrayType  = require('ref-array');
-let fs         = require('fs');
-let mkdirp     = require('mkdirp');
-let send       = require('koa-send');
-let rp         = require('request-promise');
-let gcs        = require('@google-cloud/storage')();
-let lzma       = require('lzma-native');     // one time decompression of segmentation
-let lz4        = require('lz4');             // (de)compression of segmentation from/to redis
+const app = module.exports = require('./mykoa.js')();
+const Promise    = require('bluebird');
+const ref        = require('ref');
+const ffi        = require('ffi');
+const ArrayType  = require('ref-array');
+const fs         = require('fs');
+const mkdirp     = require('mkdirp');
+const send       = require('koa-send');
+const rp         = require('request-promise');
+const gcs        = require('@google-cloud/storage')();
+const lzma       = require('lzma-native');     // one time decompression of segmentation
+const lz4        = require('lz4');             // (de)compression of segmentation from/to redis
 
-let NodeRedis  = require('redis');           // cache for volume data (metadata, segment bboxes and sizes, segmentation)
-let redis = NodeRedis.createClient('6379', '127.0.0.1', {return_buffers: true});
+const NodeRedis  = require('redis');           // cache for volume data (metadata, segment bboxes and sizes, segmentation)
+const redis = NodeRedis.createClient('6379', '127.0.0.1', {return_buffers: true});
+const log = require('./logging.js').log;
 
 Promise.promisifyAll(NodeRedis.RedisClient.prototype);
 Promise.promisifyAll(NodeRedis.Multi.prototype);
@@ -21,17 +22,17 @@ Promise.promisifyAll(NodeRedis.Multi.prototype);
 lzma.setPromiseAPI(Promise);
 
 // Typedefs
-let TaskMesherPtr = ref.refType(ref.types.void);
-let SizeTArray = ArrayType(ref.types.size_t);
-let UInt8Ptr = ref.refType(ref.types.uint8);
-let UInt16Ptr = ref.refType(ref.types.uint16);
-let UInt32Ptr = ref.refType(ref.types.uint32);
-let SizeTPtr = ref.refType(ref.types.size_t);
-let UCharPtr = ref.refType(ref.types.uchar);
-let CharPtr = ref.refType(ref.types.char);
-let CharPtrPtr = ref.refType(ref.types.CString);
+const TaskMesherPtr = ref.refType(ref.types.void);
+const SizeTArray = ArrayType(ref.types.size_t);
+const UInt8Ptr = ref.refType(ref.types.uint8);
+const UInt16Ptr = ref.refType(ref.types.uint16);
+const UInt32Ptr = ref.refType(ref.types.uint32);
+const SizeTPtr = ref.refType(ref.types.size_t);
+const UCharPtr = ref.refType(ref.types.uchar);
+const CharPtr = ref.refType(ref.types.char);
+const CharPtrPtr = ref.refType(ref.types.CString);
 
-let TaskMesherLib = ffi.Library('../lib/librtm', {
+const TaskMesherLib = ffi.Library('../lib/librtm', {
     // TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t byteLength, size_t dim[3], uint8_t * segments, uint8_t segmentCount);  
     "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt8Ptr, "uint8" ] ],
     "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt16Ptr, "uint16" ] ],
@@ -53,7 +54,7 @@ let TaskMesherLib = ffi.Library('../lib/librtm', {
     "TaskMesher_GetSimplifiedMesh_uint32": [ "void", [ TaskMesherPtr , "uint8", CharPtrPtr, SizeTPtr ] ],
 });
 
-let typeLookup = {
+const typeLookup = {
     uint8: {
         constructor: Uint8Array,
         generate: TaskMesherLib.TaskMesher_Generate_uint8,
@@ -92,7 +93,7 @@ function cachedFetch(request) {
     return redis.getAsync(request.url)
         .then(function (value) {
             if (value !== null) {
-                let decoded_resp = lz4.decode(value);
+                const decoded_resp = lz4.decode(value);
                 console.log(request.url + " successfully retrieved from cache.");
                 return decoded_resp;
             }
@@ -111,7 +112,7 @@ function cachedFetch(request) {
                     }
                 })
                 .then(function (decoded_resp) {
-                    compressed_resp = lz4.encode(decoded_resp);
+                    const compressed_resp = lz4.encode(decoded_resp);
                     console.log(request.url + " compressed (Ratio: " + (100.0 * compressed_resp.byteLength / decoded_resp.byteLength).toFixed(2) + " %)");
                     return redis.setAsync(request.url, compressed_resp)
                     .then(function () {
@@ -137,11 +138,11 @@ function generateMeshes(segmentation_path, dimensions, segments, intType) {
     return new Promise((fulfill, reject) => {
         return cachedFetch({ url: segmentation_path + 'segmentation.lzma', encoding: null })
         .then(function(segmentation) {
-            let segmentsTA = new intType.constructor(segments);
-            let segmentsBuffer = Buffer.from(segmentsTA.buffer);
+            const segmentsTA = new intType.constructor(segments);
+            const segmentsBuffer = Buffer.from(segmentsTA.buffer);
             segmentsBuffer.type = ref.types[intType];
 
-            let dimensionsArray = new SizeTArray(3);
+            const dimensionsArray = new SizeTArray(3);
             dimensionsArray[0] = dimensions.x;
             dimensionsArray[1] = dimensions.y;
             dimensionsArray[2] = dimensions.z;
@@ -158,21 +159,21 @@ function generateMeshes(segmentation_path, dimensions, segments, intType) {
 }
 
 const MIP_COUNT = 4;
-let writeBucket = gcs.bucket('overview_meshes');
+const writeBucket = gcs.bucket('overview_meshes');
 
-let syncMap = new Map();
+const syncMap = new Map();
 let processCount = 0;
 
 function processRemesh(params) {
     return new Promise((fulfill, reject) => {
-        let start = Date.now();
-        let {task_id, cell_id, type, task_dim, bucket, path, segments} = params;
+        const start = Date.now();
+        const {task_id, cell_id, type, task_dim, bucket, path, segments} = params;
         console.log("Remeshing task " + task_id);
 
-        let segmentation_path = `https://storage.googleapis.com/${bucket}/${path}`;
-        let intType = typeLookup[type];
+        const segmentation_path = `https://storage.googleapis.com/${bucket}/${path}`;
+        const intType = typeLookup[type];
 
-        let processId = processCount++;
+        const processId = processCount++;
         syncMap.set(task_id, processId);
 
         generateMeshes(segmentation_path, task_dim, segments, intType).then((mesher) => {
@@ -182,17 +183,15 @@ function processRemesh(params) {
             }
             syncMap.delete(task_id);
 
-            let start2 = Date.now();
             let remaining = MIP_COUNT;
             for (let lod = 0; lod < MIP_COUNT; ++lod) {
-                let lengthPtr = ref.alloc(ref.types.size_t);
-                let dataPtr = ref.alloc(CharPtr);
+                const lengthPtr = ref.alloc(ref.types.size_t);
+                const dataPtr = ref.alloc(CharPtr);
                 intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
-                //if (err) console.log(err);
 
-                let len = lengthPtr.deref();
-                let data = ref.reinterpret(dataPtr.deref(), len);
-                let buf = new Buffer(data.length);
+                const len = lengthPtr.deref();
+                const data = ref.reinterpret(dataPtr.deref(), len);
+                const buf = new Buffer(data.length);
 
                 if (len === 0) {
                     console.log('0 byte array', lod, this.params);
@@ -201,7 +200,7 @@ function processRemesh(params) {
                 data.copy(buf, 0, 0, data.length); // Without this nonsense I get { [Error: EFAULT: bad address in system call argument, write] errno: -14, code: 'EFAULT', syscall: 'write' }
 
                 const mipPath = `meshes/${cell_id}/${task_id}/${lod}.dstrip`;
-                let wstream = writeBucket.file(mipPath).createWriteStream({
+                const wstream = writeBucket.file(mipPath).createWriteStream({
                     gzip: true,
                     metadata: {
                         cacheControl: 'private, max-age=0, no-transform'
@@ -212,10 +211,8 @@ function processRemesh(params) {
                 wstream.end(buf);
 
                 wstream.on('finish', () => {
-                    console.log('wrote', mipPath);
                     remaining--;
                     if (remaining === 0) {
-                        console.log('rest time', Date.now() - start2);
                         fulfill(); 
                     }
                 });
@@ -223,19 +220,35 @@ function processRemesh(params) {
 
             intType.release(mesher);
         }).catch((err) => {
-            console.log('generateMeshes error', err, params);
+            log.error({
+                event: 'generateMeshes',
+				err: err,
+				params: params
+			});
+            reject(err);
         });
     });
 }
 
 const MAX_PROCESSING_COUNT = process.env.THREADS || 4;
 let currentProcessingCount = 0;
-let remeshQueue = [];
+const remeshQueuePriorities = {
+    high: [],
+    low: []
+};
 
 function checkRemeshQueue() {
-    console.log('queue length', remeshQueue.length, currentProcessingCount); 
+    const remeshQueue = remeshQueuePriorities.high.length ? remeshQueuePriorities.high : remeshQueuePriorities.low;
+    log.info({
+        event: 'queueInfo',
+        lengths: {
+            high: remeshQueuePriorities.high.length,
+            low: remeshQueuePriorities.low.length
+        },
+        processingCount: currentProcessingCount
+    });
     if (remeshQueue.length > 0) {
-        let reqParams = remeshQueue.shift();
+        const reqParams = remeshQueue.shift();
         currentProcessingCount++;
         const start = Date.now();
         processRemesh(reqParams).then(() => {
@@ -250,10 +263,18 @@ function checkRemeshQueue() {
             });
             currentProcessingCount--;
             checkRemeshQueue();
-        }).catch((err) => console.log('processRemesh err', err));
+        }).catch((err) => {
+            log.error({
+                event: 'processRemesh',
+				err: err,
+				params: reqParams
+			});
+            currentProcessingCount--;
+            checkRemeshQueue();
+        });
     } else {
         console.log('queue empty');
-    } 
+    }
 }
 
 app.post('/remesh', null, {
@@ -274,14 +295,16 @@ app.post('/remesh', null, {
             type: 'array',
             itemType: 'int',
             rule: { min: 0 }
-        }
+        },
+        priority: ['high', 'low']
     }, function* () {
-        console.log('got request');
-        remeshQueue.push(this.params); // TODO, validate them more?
+        if (this.params.priority === 'high') {
+            remeshQueuePriorities.low = remeshQueuePriorities.low.filter((oParams) => {
+                return oParams.task_id !== this.params.task_id;
+            });
+        }
+        remeshQueuePriorities[this.params.priority].push(this.params);
         if (currentProcessingCount < MAX_PROCESSING_COUNT) checkRemeshQueue();
         else console.log('busy');
         this.body = `added ${this.params.task_id} to queue`;
-        console.log('done');
 });
-
-//setInterval(function () { console.log('not busy'); }, 1000);
