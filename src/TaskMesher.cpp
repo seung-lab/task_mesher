@@ -69,3 +69,34 @@ extern "C" void TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_
 }
 
 /*****************************************************************/
+
+extern "C" void TaskMesher_ScaleVolume_uint8(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer) {
+  ScaleVolume((uint8_t*)in_volume, from_dim, to_dim, (uint8_t*)out_buffer);
+}
+
+extern "C" void TaskMesher_ScaleVolume_uint16(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer) {
+  ScaleVolume((uint16_t*)in_volume, from_dim, to_dim, (uint16_t*)out_buffer);
+}
+
+extern "C" void TaskMesher_ScaleVolume_uint32(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer) {
+  ScaleVolume((uint32_t*)in_volume, from_dim, to_dim, (uint32_t*)out_buffer);
+}
+
+/*****************************************************************/
+
+extern "C" void TaskMesher_ScaleMesh_uint8(TMesher * taskmesher, float scaleFactor[3])
+{
+  ((CTaskMesher<uint8_t>*)(taskmesher))->ScaleMesh(scaleFactor);
+}
+
+extern "C" void TaskMesher_ScaleMesh_uint16(TMesher * taskmesher, float scaleFactor[3])
+{
+  ((CTaskMesher<uint16_t>*)(taskmesher))->ScaleMesh(scaleFactor);
+}
+
+extern "C" void TaskMesher_ScaleMesh_uint32(TMesher * taskmesher, float scaleFactor[3])
+{
+  ((CTaskMesher<uint32_t>*)(taskmesher))->ScaleMesh(scaleFactor);
+}
+
+/*****************************************************************/

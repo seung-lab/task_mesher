@@ -12,6 +12,54 @@
 template<typename T>
 const char * CTaskMesher<T>::empty_mesh = "";
 
+/*****************************************************************/
+
+template<typename T>
+void ScaleVolume(const T * org_buf, size_t from_dim[3], size_t to_dim[3], T * scaled_buf)
+{
+  std::cout << "Downscaling from [" << from_dim[0] << "," << from_dim[1] << "," << from_dim[2] << "] to [" <<
+    to_dim[0] << "," << to_dim[1] << "," << to_dim[2] << "]\n";
+
+  zi::vl::vec<float, 3> scaleFactor(
+    (float)from_dim[0] / (float)to_dim[0],
+    (float)from_dim[1] / (float)to_dim[1],
+    (float)from_dim[2] / (float)to_dim[2]);
+
+  size_t px, py, pz;
+  for (size_t z = 0; z < to_dim[2]; ++z) {
+    for (size_t y = 0; y < to_dim[1]; ++y) {
+      for (size_t x = 0; x < to_dim[0]; ++x) {
+         px = floor(x * scaleFactor[0]);
+         py = floor(y * scaleFactor[1]);
+         pz = floor(z * scaleFactor[2]);
+         scaled_buf[x + to_dim[0]*y + to_dim[0]*to_dim[1]*z] = org_buf[px + from_dim[0]*py + from_dim[0]*from_dim[1]*pz];
+      }
+    }
+  }
+}
+
+/*****************************************************************/
+
+template<typename T>
+void CTaskMesher<T>::ScaleMesh(float scaleFactor[3])
+{
+  for (int lod = 0; lod < 5; ++lod) {
+    if (meshData_[lod]) {
+      float * data = (float*)(meshData_[lod]);
+      int length = meshLength_[lod] / sizeof(float);
+      
+      for (int i = 0; i < length; i += 6) {
+        data[i + 0] *= scaleFactor[0];
+        data[i + 1] *= scaleFactor[1];
+        data[i + 2] *= scaleFactor[2];
+        // 3, 4, 5 are the vertex normal
+      }
+    }
+  }
+}
+
+/*****************************************************************/
+
 template<typename T>
 CTaskMesher<T>::CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
 volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.begin(), segments.end())

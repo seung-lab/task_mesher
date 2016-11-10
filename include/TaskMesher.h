@@ -30,6 +30,7 @@ private:
 public:
   static const char * empty_mesh;
   bool GetMesh(uint8_t lod, const char ** data, size_t * length) const;
+  void ScaleMesh(float scaleFactor[3]);
 
   CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments);
   ~CTaskMesher();
@@ -53,6 +54,12 @@ extern "C" {
   void      TaskMesher_GetSimplifiedMesh_uint8(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
   void      TaskMesher_GetSimplifiedMesh_uint16(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
   void      TaskMesher_GetSimplifiedMesh_uint32(TMesher * taskmesher, uint8_t lod, const char ** data, size_t * length);
+  void      TaskMesher_ScaleVolume_uint8(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer);
+  void      TaskMesher_ScaleVolume_uint16(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer);
+  void      TaskMesher_ScaleVolume_uint32(unsigned char * in_volume, size_t from_dim[3], size_t to_dim[3], unsigned char * out_buffer);
+  void      TaskMesher_ScaleMesh_uint8(TMesher * taskmesher, float scaleFactor[3]);
+  void      TaskMesher_ScaleMesh_uint16(TMesher * taskmesher, float scaleFactor[3]);
+  void      TaskMesher_ScaleMesh_uint32(TMesher * taskmesher, float scaleFactor[3]);
 #ifdef __cplusplus
 } // extern "C"
 #endif
