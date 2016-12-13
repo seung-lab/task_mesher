@@ -61,10 +61,10 @@ void CTaskMesher<T>::ScaleMesh(float scaleFactor[3])
 /*****************************************************************/
 
 template<typename T>
-CTaskMesher<T>::CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
-volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.begin(), segments.end())
+CTaskMesher<T>::CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, uint8_t miplevels) :
+volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.begin(), segments.end()), miplevels_(miplevels)
 {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 1 + miplevels_; ++i) {
       meshData_[i] = NULL;
     }
 
@@ -97,15 +97,22 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
 
         zi::mesh::simplifier<double> s;
         im.fill_simplifier<double>(s);
-
         s.prepare();
+
+        std::cout << "Quadrics and Normal calculation." << t.elapsed<double>() << " s\n";
+        t.reset();
+
         strip = CreateDegTriStrip(s);
         meshLength_[0] = strip.size() * sizeof(float);
         meshData_[0] = new char[meshLength_[0]];
         memcpy(meshData_[0], reinterpret_cast<const char*>(&strip[0]), meshLength_[0]);
 
-        std::cout << "Quadrics and Normal calculation: " << t.elapsed<double>() << " s\n";
+        std::cout << "Original MC mesh, no simplification: " << t.elapsed<double>() << " s\n";
         t.reset();
+
+        if (miplevels_ == 0) {
+          return;
+        }
 
         s.optimize(s.face_count() / 10, 1e-12);
         strip = CreateDegTriStrip(s);
@@ -117,14 +124,18 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
         t.reset();
 
         for (int mip = 1; mip <= 3; ++mip) {
-            s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
-            strip = CreateDegTriStrip(s);
-            meshLength_[1 + mip] = strip.size() * sizeof(float);
-            meshData_[1 + mip] = new char[meshLength_[1 + mip]];
-            memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
+          if (miplevels_ == mip) {
+            break;
+          }
 
-            std::cout << "Simplification " << std::to_string(mip) << ": " << t.elapsed<double>() << " s\n";
-            t.reset();
+          s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
+          strip = CreateDegTriStrip(s);
+          meshLength_[1 + mip] = strip.size() * sizeof(float);
+          meshData_[1 + mip] = new char[meshLength_[1 + mip]];
+          memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
+
+          std::cout << "Simplification " << std::to_string(mip) << ": " << t.elapsed<double>() << " s\n";
+          t.reset();
         }
     }
 }
@@ -134,7 +145,7 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
 template<typename T>
 CTaskMesher<T>::~CTaskMesher()
 {
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 1 + miplevels_; ++i) {
     delete[] meshData_[i];
     meshData_[i] = NULL;
   }
@@ -251,7 +262,7 @@ void CTaskMesher<T>::selectSegments(bool fillHoles) {
 template<typename T>
 bool CTaskMesher<T>::GetMesh(uint8_t lod, const char ** data, size_t * length) const
 {
-  if (lod < 5) {
+  if (lod < 1 + miplevels_) {
     if (meshData_[lod]) {
       *length = meshLength_[lod];
       *data   = meshData_[lod];

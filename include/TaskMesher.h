@@ -15,10 +15,11 @@ private:
   bool                              meshed_;
   const zi::vl::vec<size_t, 3>      dim_;
   std::set<T>                       segments_;
+  uint8_t                           miplevels_;
 
 
-  size_t                            meshLength_[5];
-  char                            * meshData_[5];
+  size_t                            meshLength_[256];
+  char                            * meshData_[256];
 
   inline void idxToXYZ(size_t idx, size_t &x, size_t &y, size_t &z) const;
 
@@ -32,7 +33,7 @@ public:
   bool GetMesh(uint8_t lod, const char ** data, size_t * length) const;
   void ScaleMesh(float scaleFactor[3]);
 
-  CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments);
+  CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, uint8_t mipCount);
   ~CTaskMesher();
 
 };
@@ -42,9 +43,9 @@ typedef struct TaskMeshHandle TMesher;
 #ifdef __cplusplus
 extern "C" {
 #endif
-  TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t dim[3], uint8_t * segments, uint8_t segmentCount);
-  TMesher * TaskMesher_Generate_uint16(unsigned char * volume, size_t dim[3], uint16_t * segments, uint16_t segmentCount);
-  TMesher * TaskMesher_Generate_uint32(unsigned char * volume, size_t dim[3], uint32_t * segments, uint32_t segmentCount);
+  TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t dim[3], uint8_t * segments, uint8_t segmentCount, uint8_t mipCount);
+  TMesher * TaskMesher_Generate_uint16(unsigned char * volume, size_t dim[3], uint16_t * segments, uint16_t segmentCount, uint8_t mipCount);
+  TMesher * TaskMesher_Generate_uint32(unsigned char * volume, size_t dim[3], uint32_t * segments, uint32_t segmentCount, uint8_t mipCount);
   void      TaskMesher_Release_uint8(TMesher * taskmesher);
   void      TaskMesher_Release_uint16(TMesher * taskmesher);
   void      TaskMesher_Release_uint32(TMesher * taskmesher);

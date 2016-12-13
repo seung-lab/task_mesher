@@ -1,4 +1,6 @@
 // Packages
+const rtm_config = require('./rtm.config.json')
+
 const app = module.exports = require('./mykoa.js')();
 const Promise    = require('bluebird');
 const ref        = require('ref');
@@ -34,10 +36,10 @@ const CharPtr = ref.refType(ref.types.char);
 const CharPtrPtr = ref.refType(ref.types.CString);
 
 const TaskMesherLib = ffi.Library('../lib/librtm', {
-    // TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t dim[3], uint8_t * segments, uint8_t segmentCount);  
-    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt8Ptr, "uint8" ] ],
-    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt16Ptr, "uint16" ] ],
-    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt32Ptr, "uint32" ] ],
+    // TMesher * TaskMesher_Generate_uint8(unsigned char * volume, size_t dim[3], uint8_t * segments, uint8_t segmentCount, uint8_t mipCount);  
+    "TaskMesher_Generate_uint8": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt8Ptr, "uint8", "uint8" ] ],
+    "TaskMesher_Generate_uint16": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt16Ptr, "uint16", "uint8" ] ],
+    "TaskMesher_Generate_uint32": [ TaskMesherPtr, [ UCharPtr, SizeTArray, UInt32Ptr, "uint32", "uint8" ] ],
 
     // void      TaskMesher_Release_uint8(TMesher * taskmesher);
     "TaskMesher_Release_uint8": [ "void", [ TaskMesherPtr ] ],
@@ -194,14 +196,14 @@ function scaleMesh(mesher, intType, scaleFactor) {
         scaleArray[1] = scaleFactor[1];
         scaleArray[2] = scaleFactor[2];
        
-        intType.scaleMesh.async(mesher, scaleFactor, function (err, success) {
+        intType.scaleMesh.async(mesher, scaleArray, function (err, success) {
             if (err) reject(err);
             else fulfill(mesher);
         });
     });
 }
 
-function generateMeshes(segmentation, dimensions, segments, intType) {
+function generateMeshes(segmentation, dimensions, segments, mipCount, intType) {
     return new Promise((fulfill, reject) => {
         const segmentsTA = new intType.constructor(segments);
         const segmentsBuffer = Buffer.from(segmentsTA.buffer);
@@ -212,7 +214,8 @@ function generateMeshes(segmentation, dimensions, segments, intType) {
         dimensionsArray[1] = dimensions.y;
         dimensionsArray[2] = dimensions.z;
 
-        intType.generate.async(segmentation, dimensionsArray, segmentsBuffer, segmentsTA.length, function (err, mesher) {
+
+        intType.generate.async(segmentation, dimensionsArray, segmentsBuffer, segmentsTA.length, mipCount, function (err, mesher) {
             if (err) reject(err);
             else fulfill(mesher);
         });
@@ -220,7 +223,7 @@ function generateMeshes(segmentation, dimensions, segments, intType) {
 }
 
 const MIP_COUNT = 4;
-const writeBucket = gcs.bucket('overview_meshes_dev');
+const writeBucket = gcs.bucket(rtm_config.overview_meshes_bucket);
 
 const syncMap = new Map();
 let processCount = 0;
@@ -247,11 +250,16 @@ function processRemesh(params) {
         })
         .then((segmentation) => {
             let dimensions = preview || task_dim;
-            return generateMeshes(segmentation, preview ? preview : task_dim, segments, intType);
+            if (preview) {
+                return generateMeshes(segmentation, preview, segments, 1, intType);
+            } else {
+                return generateMeshes(segmentation, task_dim, segments, MIP_COUNT, intType);
+            }
+            
         })
         .then((mesher) => {
-            if (preview) {
-                let scale = [preview.x / task_dim.x, preview.y / task_dim.y, preview.z / task_dim.z];
+            if (preview) { // restore original dimensions for downscaled preview
+                let scale = [task_dim.x / preview.x, task_dim.y / preview.y, task_dim.z / preview.z];
                 return scaleMesh(mesher, intType, scale);
             } else {
                 return mesher;
@@ -268,7 +276,12 @@ function processRemesh(params) {
             for (let lod = 0; lod < MIP_COUNT; ++lod) {
                 const lengthPtr = ref.alloc(ref.types.size_t);
                 const dataPtr = ref.alloc(CharPtr);
-                intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
+
+                if (preview) { // Don't want simplified meshes for the preview, those are already low-poly
+                    intType.getSimplifiedMesh(mesher, 0, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
+                } else {
+                    intType.getSimplifiedMesh(mesher, lod, dataPtr, lengthPtr);//, function (err) { DISABLED ASYNC DUE TO TIMING ISSUE
+                }
 
                 const len = lengthPtr.deref();
                 const data = ref.reinterpret(dataPtr.deref(), len);
@@ -288,7 +301,10 @@ function processRemesh(params) {
                     },
                     resumable: false // small speed boost, is it worth it?
                 });
-                wstream.on('error', function(e) { console.error(e); });
+                wstream.on('error', function(e) {
+                    console.error(e);
+                    reject(e);
+                });
                 wstream.end(buf);
 
                 wstream.on('finish', () => {
@@ -311,7 +327,7 @@ function processRemesh(params) {
     });
 }
 
-const MAX_PROCESSING_COUNT = process.env.THREADS || 4;
+const MAX_PROCESSING_COUNT = Math.max(process.env.THREADS || 4, 2);
 let currentProcessingCount = 0;
 const remeshQueuePriorities = {
     high: [],
@@ -331,38 +347,43 @@ function checkRemeshQueue() {
         },
         processingCount: currentProcessingCount
     });
+
     if (remeshQueue.length > 0) {
-        const reqParams = remeshQueue.shift();
-        currentProcessingCount++;
-        const start = Date.now();
-        const id = uniqueID++;
+        if (currentProcessingCount >= MAX_PROCESSING_COUNT - 1 && remeshQueuePriorities.high.length == 0) {
+            console.log(`${currentProcessingCount} meshes currently generated. Keeping one thread for emergencies available`);
+        } else {
+            const reqParams = remeshQueue.shift();
+            currentProcessingCount++;
+            const start = Date.now();
+            const id = uniqueID++;
 
-        activeTasks[id] = reqParams.task_id;
+            activeTasks[id] = reqParams.task_id;
 
-        processRemesh(reqParams).then(() => {
-            console.log('time', reqParams.task_id, Date.now() - start);
-            rp({
-                method: 'POST',
-                uri: `http://nkem.eyewire.org/1.0/task/${reqParams.task_id}/mesh_updated/`
-            }).then(() => {
-                console.log('sent', reqParams.task_id, 'to site server');
+            processRemesh(reqParams).then(() => {
+                console.log('time', reqParams.task_id, Date.now() - start);
+                rp({
+                    method: 'POST',
+                    uri: `${rtm_config.eyewire_server}/1.0/task/${reqParams.task_id}/mesh_updated/`
+                }).then(() => {
+                    console.log('sent', reqParams.task_id, 'to site server');
+                }).catch((err) => {
+                    console.log('failed to send mesh_update', err); // no big deal if this fails?
+                });
+                delete activeTasks[id];
+                currentProcessingCount--;
+                checkRemeshQueue();
             }).catch((err) => {
-                console.log('failed to send mesh_update', err); // no big deal if this fails?
+                log.error({
+                    event: 'processRemesh',
+                    err: err,
+                    params: reqParams
+                });
+                delete activeTasks[id];
+                currentProcessingCount--;
+                remeshQueue.push(reqParams);
+                checkRemeshQueue();
             });
-            delete activeTasks[id];
-            currentProcessingCount--;
-            checkRemeshQueue();
-        }).catch((err) => {
-            log.error({
-                event: 'processRemesh',
-				err: err,
-				params: reqParams
-			});
-            delete activeTasks[id];
-            currentProcessingCount--;
-            remeshQueue.push(reqParams);
-            checkRemeshQueue();
-        });
+        }
     } else {
         console.log('queue empty');
     }
