@@ -43,7 +43,7 @@ void ScaleVolume(const T * org_buf, size_t from_dim[3], size_t to_dim[3], T * sc
 template<typename T>
 void CTaskMesher<T>::ScaleMesh(float scaleFactor[3])
 {
-  for (int lod = 0; lod < 5; ++lod) {
+  for (int lod = 0; lod < 1 + miplevels_; ++lod) {
     if (meshData_[lod]) {
       float * data = (float*)(meshData_[lod]);
       int length = meshLength_[lod] / sizeof(float);
