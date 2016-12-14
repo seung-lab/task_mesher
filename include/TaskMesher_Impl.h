@@ -123,11 +123,7 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
         std::cout << "Initial (lossless) simplification: " << t.elapsed<double>() << " s\n";
         t.reset();
 
-        for (int mip = 1; mip <= 3; ++mip) {
-          if (miplevels_ == mip) {
-            break;
-          }
-
+        for (int mip = 1; mip < miplevels_; ++mip) {
           s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
           strip = CreateDegTriStrip(s);
           meshLength_[1 + mip] = strip.size() * sizeof(float);
