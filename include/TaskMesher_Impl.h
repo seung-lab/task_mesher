@@ -12,11 +12,59 @@
 template<typename T>
 const char * CTaskMesher<T>::empty_mesh = "";
 
+/*****************************************************************/
+
 template<typename T>
-CTaskMesher<T>::CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments) :
-volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.begin(), segments.end())
+void ScaleVolume(const T * org_buf, size_t from_dim[3], size_t to_dim[3], T * scaled_buf)
 {
-    for (int i = 0; i < 5; ++i) {
+  std::cout << "Downscaling from [" << from_dim[0] << "," << from_dim[1] << "," << from_dim[2] << "] to [" <<
+    to_dim[0] << "," << to_dim[1] << "," << to_dim[2] << "]\n";
+
+  zi::vl::vec<float, 3> scaleFactor(
+    (float)from_dim[0] / (float)to_dim[0],
+    (float)from_dim[1] / (float)to_dim[1],
+    (float)from_dim[2] / (float)to_dim[2]);
+
+  size_t px, py, pz;
+  for (size_t z = 0; z < to_dim[2]; ++z) {
+    for (size_t y = 0; y < to_dim[1]; ++y) {
+      for (size_t x = 0; x < to_dim[0]; ++x) {
+         px = floor(x * scaleFactor[0]);
+         py = floor(y * scaleFactor[1]);
+         pz = floor(z * scaleFactor[2]);
+         scaled_buf[x + to_dim[0]*y + to_dim[0]*to_dim[1]*z] = org_buf[px + from_dim[0]*py + from_dim[0]*from_dim[1]*pz];
+      }
+    }
+  }
+}
+
+/*****************************************************************/
+
+template<typename T>
+void CTaskMesher<T>::ScaleMesh(float scaleFactor[3])
+{
+  for (int lod = 0; lod < 1 + miplevels_; ++lod) {
+    if (meshData_[lod]) {
+      float * data = (float*)(meshData_[lod]);
+      int length = meshLength_[lod] / sizeof(float);
+      
+      for (int i = 0; i < length; i += 6) {
+        data[i + 0] *= scaleFactor[0];
+        data[i + 1] *= scaleFactor[1];
+        data[i + 2] *= scaleFactor[2];
+        // 3, 4, 5 are the vertex normal
+      }
+    }
+  }
+}
+
+/*****************************************************************/
+
+template<typename T>
+CTaskMesher<T>::CTaskMesher(std::vector<T> segmentation, const zi::vl::vec<size_t, 3> & dim, const std::vector<T> & segments, uint8_t miplevels) :
+volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.begin(), segments.end()), miplevels_(miplevels)
+{
+    for (int i = 0; i < 1 + miplevels_; ++i) {
       meshData_[i] = NULL;
     }
 
@@ -49,15 +97,22 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
 
         zi::mesh::simplifier<double> s;
         im.fill_simplifier<double>(s);
-
         s.prepare();
+
+        std::cout << "Quadrics and Normal calculation." << t.elapsed<double>() << " s\n";
+        t.reset();
+
         strip = CreateDegTriStrip(s);
         meshLength_[0] = strip.size() * sizeof(float);
         meshData_[0] = new char[meshLength_[0]];
         memcpy(meshData_[0], reinterpret_cast<const char*>(&strip[0]), meshLength_[0]);
 
-        std::cout << "Quadrics and Normal calculation: " << t.elapsed<double>() << " s\n";
+        std::cout << "Original MC mesh, no simplification: " << t.elapsed<double>() << " s\n";
         t.reset();
+
+        if (miplevels_ == 0) {
+          return;
+        }
 
         s.optimize(s.face_count() / 10, 1e-12);
         strip = CreateDegTriStrip(s);
@@ -68,15 +123,15 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
         std::cout << "Initial (lossless) simplification: " << t.elapsed<double>() << " s\n";
         t.reset();
 
-        for (int mip = 1; mip <= 3; ++mip) {
-            s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
-            strip = CreateDegTriStrip(s);
-            meshLength_[1 + mip] = strip.size() * sizeof(float);
-            meshData_[1 + mip] = new char[meshLength_[1 + mip]];
-            memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
+        for (int mip = 1; mip < miplevels_; ++mip) {
+          s.optimize(s.face_count() / 8, 1 << (10*(mip - 1)));
+          strip = CreateDegTriStrip(s);
+          meshLength_[1 + mip] = strip.size() * sizeof(float);
+          meshData_[1 + mip] = new char[meshLength_[1 + mip]];
+          memcpy(meshData_[1 + mip], reinterpret_cast<const char*>(&strip[0]), meshLength_[1 + mip]);
 
-            std::cout << "Simplification " << std::to_string(mip) << ": " << t.elapsed<double>() << " s\n";
-            t.reset();
+          std::cout << "Simplification " << std::to_string(mip) << ": " << t.elapsed<double>() << " s\n";
+          t.reset();
         }
     }
 }
@@ -86,7 +141,7 @@ volume_(std::move(segmentation)), meshed_(false), dim_(dim), segments_(segments.
 template<typename T>
 CTaskMesher<T>::~CTaskMesher()
 {
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 1 + miplevels_; ++i) {
     delete[] meshData_[i];
     meshData_[i] = NULL;
   }
@@ -203,7 +258,7 @@ void CTaskMesher<T>::selectSegments(bool fillHoles) {
 template<typename T>
 bool CTaskMesher<T>::GetMesh(uint8_t lod, const char ** data, size_t * length) const
 {
-  if (lod < 5) {
+  if (lod < 1 + miplevels_) {
     if (meshData_[lod]) {
       *length = meshLength_[lod];
       *data   = meshData_[lod];
