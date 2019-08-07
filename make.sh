@@ -1,4 +1,5 @@
 #!/bin/bash
+GCC="g++-5"
 ZILIBDIR="./third_party/zi_lib"
 
 CXXINCLUDES="-I/usr/include -I./include -I$ZILIBDIR"
@@ -7,8 +8,8 @@ COMMON_FLAGS="-fPIC -g -std=c++11"
 OPTIMIZATION_FLAGS="-DNDEBUG -O3"
 
 echo "Compiling RTM"
-g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/MeshIO.cpp -o build/MeshIO.o
-g++ -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/TaskMesher.cpp -o build/TaskMesher.o
+$GCC -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/MeshIO.cpp -o build/MeshIO.o
+$GCC -c $CXXINCLUDES $CXXLIBS $COMMON_FLAGS $OPTIMIZATION_FLAGS src/TaskMesher.cpp -o build/TaskMesher.o
 
 echo "Creating librtm.so"
-g++ $CXXLIBS -shared -fPIC -o lib/librtm.so build/MeshIO.o build/TaskMesher.o
+$GCC $CXXLIBS -shared -fPIC -o lib/librtm.so build/MeshIO.o build/TaskMesher.o
