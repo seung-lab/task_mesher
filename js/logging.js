@@ -74,6 +74,9 @@ let serializers = {
 	}
 };
 
+const fs = require('fs');
+!fs.existsSync('logs') && fs.mkdirSync('logs');
+
 exports.log = bunyan.createLogger({
 	name: 'rtm',
 	serializers: serializers,
