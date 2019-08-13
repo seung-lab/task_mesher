@@ -13,6 +13,7 @@ const rp         = require('request-promise');
 const gcs        = require('@google-cloud/storage')();
 const lzma       = require('lzma-native');     // one time decompression of segmentation
 const lz4        = require('lz4');             // (de)compression of segmentation from/to redis
+const os         = require('os');
 
 const NodeRedis  = require('redis');           // cache for volume data (metadata, segment bboxes and sizes, segmentation)
 const redis = NodeRedis.createClient('6379', '127.0.0.1', {return_buffers: true});
@@ -349,8 +350,12 @@ function checkRemeshQueue() {
     });
 
     if (remeshQueue.length > 0) {
+        const memoryUsage = 1 - (os.freemem() / os.totalmem());
+
         if (currentProcessingCount >= MAX_PROCESSING_COUNT - 1 && remeshQueuePriorities.high.length == 0) {
             console.log(`${currentProcessingCount} meshes currently generated. Keeping one thread for emergencies available`);
+        } else if (currentProcessingCount > 0 && memoryUsage > 0.9) {
+            console.log(`Memory usage too high (${memoryUsage}, waiting for in-process remesh to finish.`);
         } else {
             const reqParams = remeshQueue.shift();
             currentProcessingCount++;
